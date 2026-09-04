@@ -1,0 +1,7 @@
+txn_id,sender_account_or_upi,sender_name,receiver_account_or_upi,receiver_name,amount_inr,txn_timestamp,bank_ref_no,mule_layer
+TXN8001,9810123456@sbi,Dr. S. K. Verma,devmule@okhdfcbank,Dev Enterprises (Devendra Singh),1450000.00,2026-02-10 15:45:00,UTR20260210001,Layer 0 (Victim to Primary Mule)
+TXN8002,devmule@okhdfcbank,Dev Enterprises,9876500001@icici,Rohan Mule A/C 1,480000.00,2026-02-10 15:52:00,UTR20260210002,Layer 1 (Sub-Mule Split)
+TXN8003,devmule@okhdfcbank,Dev Enterprises,9876500002@axisbank,Sonu Mule A/C 2,490000.00,2026-02-10 15:58:00,UTR20260210003,Layer 1 (Sub-Mule Split)
+TXN8004,devmule@okhdfcbank,Dev Enterprises,9876500003@paytm,Amit Mule A/C 3,450000.00,2026-02-10 16:05:00,UTR20260210004,Layer 1 (Sub-Mule Split)
+TXN8005,9876500001@icici,Rohan Mule A/C 1,ATM_WITHDRAWAL_NOIDA_SEC18,ATM Cash-out Alpha,450000.00,2026-02-10 16:30:00,ATM20260210091,Layer 2 (Cash Withdrawal)
+TXN8006,9876500002@axisbank,Sonu Mule A/C 2,P2P_CRYPTO_ESCROW_USDT,Crypto Merchant Zeta,480000.00,2026-02-10 16:35:00,CRYPTO2026021088,Layer 2 (Crypto Off-Ramp)

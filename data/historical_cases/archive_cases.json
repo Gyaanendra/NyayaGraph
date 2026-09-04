@@ -1,0 +1,52 @@
+[
+  {
+    "case_id": "FIR_45_2024_SURAJPUR",
+    "fir_number": "45/2024",
+    "police_station": "Cyber Crime PS, Surajpur (Greater Noida)",
+    "investigating_officer": "Inspector Ramesh Sharma",
+    "io_contact": "+91-98765-43210 (CCTNS Desk: ext 402)",
+    "registration_date": "2024-06-18",
+    "case_status": "Charge-sheet Filed / Kingpin on Conditional Bail",
+    "modus_operandi": "Fake Mumbai Customs / Fedex courier narcotic parcel scam leading to Skype digital arrest and rapid fund layering into dummy current accounts.",
+    "key_identifiers": {
+      "phones": ["9911223344", "9876543219"],
+      "imeis": ["860000112233445"],
+      "bank_accounts": ["9876543210123"],
+      "upi_ids": ["devmule@okhdfcbank", "vickyhawala@icici"],
+      "vehicles": ["UP16 CD 4501", "UP14 BX 7788"],
+      "suspect_names": ["Vikram Malhotra @ Vicky Hawala", "Mohammad Tariq @ Chotu", "Suresh Tyagi"]
+    },
+    "syndicate_structure": "Call Center operation based out of Western UP with Hawala settlement in Indirapuram. Vikram Malhotra acts as the central link providing burner SIMs and purchasing KYC-compromised corporate accounts.",
+    "recovery_tactics_and_leads": "During 2024 interrogation, Accused Vicky admitted to using encrypted Telegram channel 'AlphaSettlement' for dispatching OTPs. Freezing the primary Yes Bank escrow within 2 hours recovered 65% of defrauded funds.",
+    "resemblance_profile": {
+      "crime_category": "Cyber Digital Arrest & Extortion",
+      "target_demographic": "Senior Professionals & Doctors",
+      "layering_speed_minutes": 30
+    }
+  },
+  {
+    "case_id": "FIR_89_2025_SECTOR20",
+    "fir_number": "89/2025",
+    "police_station": "PS Sector 20, Noida",
+    "investigating_officer": "Sub-Inspector Alok Mishra",
+    "io_contact": "+91-98111-99887",
+    "registration_date": "2025-03-22",
+    "case_status": "Under Trial",
+    "modus_operandi": "Stock market investment / fake IPO WhatsApp group fraud.",
+    "key_identifiers": {
+      "phones": ["9899187654", "9818800112"],
+      "imeis": ["869911223344556"],
+      "bank_accounts": ["50100456789012"],
+      "upi_ids": ["stockguru@paytm"],
+      "vehicles": ["DL 3S AB 9081"],
+      "suspect_names": ["Rahul Sharma @ Pandit", "Devendra Singh @ Dev"]
+    },
+    "syndicate_structure": "VoIP SIP trunk server management cell supplying spoofed WhatsApp business virtual numbers.",
+    "recovery_tactics_and_leads": "Seized server log backups at Knowledge Park hosting facility revealed IP session logs of dialer operators.",
+    "resemblance_profile": {
+      "crime_category": "Investment WhatsApp Fraud",
+      "target_demographic": "Retail Investors",
+      "layering_speed_minutes": 15
+    }
+  }
+]

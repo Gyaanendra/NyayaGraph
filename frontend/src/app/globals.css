@@ -1,0 +1,412 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;500;600;700;800;900&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap');
+@import "tailwindcss";
+
+/* =========================================================================
+   ANTIGRAVITY DESIGN SYSTEM
+   Reference: CyberLife / Detroit: Become Human diegetic UI
+   Flat, technical, "blueprint-on-vellum" interface style.
+   No glassmorphism, no gradients, no glow, no drop shadows. Precision over decoration.
+   ========================================================================= */
+
+:root {
+  /* Status/diode colors — these are functional, not decorative */
+  --status-blue:   #00D1FF;  /* WRK — normal functioning / connected / online */
+  --status-yellow: #FFF500;  /* LDNG — loading, menu opening, interactive activation */
+  --status-red:    #FF0000;  /* ERR — network error, connection lost */
+
+  /* Typography */
+  --font-display: 'Gotham Ultra', 'Gotham Pro Bold', 'Montserrat', sans-serif;   /* ONLY for "DETROIT" */
+  --font-subtitle: 'Gotham Rounded Light', 'Gotham Pro Light', 'Montserrat', sans-serif; /* ONLY for "BECOME HUMAN" subtitle */
+  --font-body: 'Gotham Pro', 'Montserrat', sans-serif; /* everything else */
+  --font-mono: 'IBM Plex Mono', 'Roboto Mono', monospace;
+
+  /* Type scale (from spec sheet) */
+  --size-display: 60px;   /* hero H1 */
+  --size-h2: 22px;
+  --size-h3: 17px;
+  --size-body-lg: 15px;
+  --size-body: 13px;
+  --size-label: 10px;
+  --size-micro: 8px;
+
+  /* Grid */
+  --grid-columns: 12;
+  --grid-width: 1240px;
+  --grid-gutter: 20px;
+
+  /* Base Backgrounds & Panels */
+  --bg-canvas: #F2F2F0;       /* main background, warm off-white, paper/blueprint feel */
+  --bg-panel: #F7F7F5;        /* content panel background, slightly lighter than canvas */
+  --bg-panel-alt: #FFFFFF;    /* card/tile background inside panels */
+
+  /* Text */
+  --text-primary: #1A1A1A;    /* headlines, high-emphasis text */
+  --text-secondary: #8A8A8A;  /* labels, nav, body copy — used ~80% of the time */
+  --text-tertiary: #B8B8B6;   /* disabled / watermark text */
+
+  /* Accent (single accent rule — ONE accent color per interface) */
+  --accent-cyan: #1BA8D1;     /* active states, selected tabs, node highlights, status icon */
+  --accent-cyan-fill: #00C2E0;/* solid fill variant for filled nodes/buttons */
+
+  /* Secondary accent */
+  --accent-navy: #1E3A5F;     /* photo/thumbnail overlays, diagram tile backgrounds */
+
+  /* Alert (spot color — extremely sparing use) */
+  --accent-alert: #D6483C;    /* lock icons, warnings only */
+
+  /* Structure */
+  --line-hairline: #DADAD8;   /* 1px panel borders, dividers */
+  --line-diagram: #C7CDD2;    /* connector lines in flowcharts */
+  --watermark-shape: #E7E7E5; /* faint diamond/rhombus background motif */
+
+  /* Shape tokens */
+  --radius-none: 0px;
+  --radius-hairline: 1px;
+  --radius-pill: 999px;
+  --radius-tile: 2px;
+  --border-width: 1px;
+
+  /* Spacing */
+  --panel-padding: 40px;
+  --panel-margin: 24px;
+  --nav-gap: 40px;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  letter-spacing: -0.01em;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  user-select: none;
+}
+
+/* Drafting Table Blueprint Subtle Grid */
+.blueprint-grid {
+  background-color: var(--bg-canvas);
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.025) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Faint Diamond / Rhombus Watermark Motif */
+.watermark-diamond {
+  position: absolute;
+  pointer-events: none;
+  background-color: var(--watermark-shape);
+  clip-path: polygon(25% 0%, 100% 0%, 75% 100%, 0% 100%);
+  opacity: 0.65;
+}
+
+/* Floating Technical Panel (1px Hairline, No Shadows) */
+.blueprint-floating-panel {
+  background: var(--bg-panel);
+  border: var(--border-width) solid var(--line-hairline);
+  box-shadow: none !important;
+}
+
+/* Viewfinder L-Shaped Corner Brackets */
+.corner-bracket-tl {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--text-secondary);
+  border-left: 1.5px solid var(--text-secondary);
+  pointer-events: none;
+}
+
+.corner-bracket-tr {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 8px;
+  height: 8px;
+  border-top: 1.5px solid var(--text-secondary);
+  border-right: 1.5px solid var(--text-secondary);
+  pointer-events: none;
+}
+
+.corner-bracket-bl {
+  position: absolute;
+  bottom: -1px;
+  left: -1px;
+  width: 8px;
+  height: 8px;
+  border-bottom: 1.5px solid var(--text-secondary);
+  border-left: 1.5px solid var(--text-secondary);
+  pointer-events: none;
+}
+
+.corner-bracket-br {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 8px;
+  height: 8px;
+  border-bottom: 1.5px solid var(--text-secondary);
+  border-right: 1.5px solid var(--text-secondary);
+  pointer-events: none;
+}
+
+/* Flowchart Nodes */
+
+/* Active / Filled Node (Solid Cyan) */
+.node-filled-cyan {
+  background-color: var(--accent-cyan-fill);
+  color: #FFFFFF;
+  border: var(--border-width) solid var(--accent-cyan-fill);
+  border-radius: var(--radius-tile);
+  box-shadow: none;
+  transition: background-color 140ms ease-out;
+}
+
+.node-filled-cyan:hover {
+  background-color: #00B2CE;
+}
+
+/* Inactive / Outline Node */
+.node-outline {
+  background-color: var(--bg-panel-alt);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--line-hairline);
+  border-radius: var(--radius-tile);
+  box-shadow: none;
+  transition: border-color 140ms ease-out;
+}
+
+.node-outline:hover {
+  border-color: var(--accent-cyan);
+}
+
+/* Locked Node with Spot Red Badge */
+.node-locked {
+  background-color: #ECECE8;
+  color: #6A6A66;
+  border: var(--border-width) solid var(--line-hairline);
+  border-radius: var(--radius-tile);
+  box-shadow: none;
+}
+
+/* Slanted Rhombus Tile (Detroit Scene / Anchor Frame) */
+.slanted-rhombus-tile {
+  transform: skewX(-14deg);
+  border: var(--border-width) solid var(--line-hairline);
+  background-color: var(--bg-panel-alt);
+  border-radius: var(--radius-tile);
+  box-shadow: none;
+}
+
+.slanted-rhombus-inner {
+  transform: skewX(14deg);
+}
+
+/* Thumbnail Video Tile (Navy Background with Centered Play Button) */
+.video-thumbnail-tile {
+  background-color: var(--accent-navy);
+  border: var(--border-width) solid #2A4C78;
+  border-radius: var(--radius-tile);
+  color: #FFFFFF;
+}
+
+/* Chemical / Data Inset Box (Thirium 310 Style) */
+.data-callout-box {
+  background-color: var(--accent-navy);
+  color: #FFFFFF;
+  border: var(--border-width) solid #2A4C78;
+  border-radius: var(--radius-tile);
+}
+
+/* Decorative Barcode Strip */
+.barcode-strip {
+  background: repeating-linear-gradient(
+    90deg,
+    #2B2B2B,
+    #2B2B2B 2px,
+    transparent 2px,
+    transparent 4px,
+    #2B2B2B 4px,
+    #2B2B2B 6px,
+    transparent 6px,
+    transparent 8px,
+    #2B2B2B 8px,
+    #2B2B2B 11px,
+    transparent 11px,
+    transparent 13px
+  );
+}
+
+/* Crosshair Reticle Mark */
+.crosshair-reticle {
+  position: absolute;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+/* Custom Minimalist Blueprint Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: #D0D0CA;
+  border-radius: var(--radius-hairline);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}
+
+/* Typography Classes */
+.font-display {
+  font-family: var(--font-display);
+}
+.font-subtitle {
+  font-family: var(--font-subtitle);
+}
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* Primary CTA Button with Subtle Diagonal Triangle-Fold Corner */
+.btn-folded-triangle {
+  position: relative;
+  background-color: #1E3A5F;
+  color: #FFFFFF;
+  border-radius: 0px;
+  overflow: hidden;
+  transition: background-color 140ms ease-out;
+}
+.btn-folded-triangle:hover {
+  background-color: #152B47;
+}
+.btn-folded-triangle::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 12px 12px;
+  border-color: transparent transparent #00D1FF transparent;
+  pointer-events: none;
+}
+
+/* Faceted Geometric Wedge (like Reference 5 Manfred Button) */
+.btn-folded-faceted {
+  position: relative;
+  background-color: #1E3A5F;
+  color: #FFFFFF;
+  border-radius: 0px;
+  overflow: hidden;
+  transition: background-color 140ms ease-out;
+}
+.btn-folded-faceted:hover {
+  background-color: #162C49;
+}
+.btn-folded-faceted::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 24px;
+  background: linear-gradient(135deg, transparent 35%, #0088CC 35%, #0088CC 65%, #00D1FF 65%);
+  pointer-events: none;
+}
+
+/* Geometric Triangle Crop Masks */
+.triangle-hero-mask,
+.triangle-up {
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+.triangle-down {
+  clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
+}
+
+.triangle-slanted-up {
+  clip-path: polygon(40% 0%, 100% 100%, 0% 88%);
+}
+
+.triangle-slanted-down {
+  clip-path: polygon(0% 12%, 100% 0%, 60% 100%);
+}
+
+/* Caught Mid-Select Dev-Mode Tab with Cyan Corner Handles (Reference 2 & 404) */
+.tab-caught-mid-select {
+  position: relative;
+  border: 1px solid #DADAD8;
+  background: rgba(255, 255, 255, 0.6);
+}
+.tab-caught-mid-select::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 6px;
+  height: 6px;
+  border-top: 1.5px solid #00D1FF;
+  border-left: 1.5px solid #00D1FF;
+  pointer-events: none;
+}
+.tab-caught-mid-select::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-bottom: 1.5px solid #00D1FF;
+  border-right: 1.5px solid #00D1FF;
+  pointer-events: none;
+}
+
+/* Active Filled Tab with Triangle Wedge */
+.tab-folded-active {
+  position: relative;
+  background-color: #1E3A5F;
+  color: #FFFFFF;
+  overflow: hidden;
+}
+.tab-folded-active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 18px;
+  background: linear-gradient(135deg, transparent 40%, #0088CC 40%, #0088CC 70%, #00D1FF 70%);
+  pointer-events: none;
+}
+
+/* Duotone Clinical Filter */
+.duotone-cyberlife {
+  filter: contrast(1.05) saturate(0.85);
+}
+
+/* Diode Loading Animation */
+@keyframes diode-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0px #FFF500;
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.08);
+    box-shadow: 0 0 6px #FFF500;
+  }
+}
+.animate-diode-pulse {
+  animation: diode-pulse 1.3s ease-in-out infinite;
+}

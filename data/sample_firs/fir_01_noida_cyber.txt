@@ -1,0 +1,22 @@
+POLICE STATION: CYBER CRIME POLICE STATION, GAUTAM BUDDHA NAGAR (NOIDA)
+FIRST INFORMATION REPORT (Under Section 173 BNSS 2023 / Sec 154 CrPC)
+FIR No: 112/2026
+Date & Time of FIR: 14/02/2026 11:30 hrs
+Offense Registered Under: Sections 318(4), 319(2), 336(3), 61(2) of Bharatiya Nyaya Sanhita (BNS) 2023 & Sec 66D IT Act 2008
+(Corresponding IPC equivalents: Sec 420, 419, 468, 120B IPC)
+
+COMPLAINANT DETAILS:
+Name: Dr. S. K. Verma, R/o Sector 44, Noida. Mobile: +91-98101-23456.
+
+INCIDENT & NARRATIVE (VIVRAN):
+Complainant received repeated coercive calls on 10/02/2026 alleging an unauthorized parcel seized at Mumbai Customs containing contraband narcotics. The caller claimed to be CBI Officer Vikram Rathore using mobile number +91 98712 34567 (IMEI: 864501041234567). The complainant was placed under "Digital Arrest" via Skype video call and coerced to liquidate fixed deposits and transfer Rs. 14,50,000/- into alleged 'RBI Verification Escrow Accounts'.
+
+OPERATIONAL & SEIZURE DETAILS (FARD BRAMADGI & INVESTIGATION FINDINGS):
+1. Prime Suspect 1 (Call Center Operator): Mohammad Tariq @ Chotu, S/o Late Abdul Ghani, Age 28 yrs, R/o Haibatpur, Greater Noida West. Operated caller SIM +91 98712 34567 and secondary SIM 9871234568. Recovered mobile handset with IMEI: 864501041234567. Vehicle used for logistics: White Hyundai Creta Registration UP16 CD 4501.
+2. Prime Suspect 2 (Tech / Dialer Coordinator): Rahul Sharma @ Pandit, S/o Suresh Sharma, R/o Knowledge Park III, Greater Noida. Mobile: +91-98991-87654. Managed VoIP dialer server routing.
+3. Mule Account Supplier & Hawala Handler (The Middleman / Central Broker): Vikram Malhotra @ Vicky Hawala, R/o Indirapuram, Ghaziabad. Mobile: 9911223344. Coordinated bank transfers into Yes Bank A/C 9876543210123 (IFSC: YESB0000123, Account holder: 'Dev Enterprises' / Dummy Mule) and UPI ID: devmule@okhdfcbank.
+4. Mule Account Holder: Devendra Singh @ Dev, R/o Village Chaura, Noida Sector 22. Associated UPI ID: devmule@okhdfcbank, HDFC Bank A/C 50100456789012. Vehicle observed: Bajaj Pulsar DL 3S AB 9081.
+
+CRIME SCENE & CELL TOWER LOCATIONS:
+Incidents of extortion occurred under Cell Tower Node GBN-TWR-884 (Knowledge Park III) and GBN-TWR-912 (Noida Sector 62) between 10/02/2026 14:00 hrs and 12/02/2026 19:30 hrs.
+Transferred funds: Rs. 14,50,000/- split rapidly into 3 mule layers within 25 minutes.
