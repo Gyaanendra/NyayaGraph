@@ -9,6 +9,7 @@ interface StatusDiodeProps {
   state?: DiodeState;
   size?: 'sm' | 'md' | 'lg';
   interactive?: boolean;
+  bootPulse?: boolean;
   className?: string;
 }
 
@@ -17,6 +18,7 @@ export const StatusDiode: React.FC<StatusDiodeProps> = ({
   state: controlledState,
   size = 'md',
   interactive = true,
+  bootPulse = false,
   className = '',
 }) => {
   const [internalState, setInternalState] = useState<DiodeState>(initialState);
@@ -70,7 +72,7 @@ export const StatusDiode: React.FC<StatusDiodeProps> = ({
       title={`${stateStyles.label} (Click to cycle)`}
       className={`relative rounded-full border-2 ${stateStyles.border} ${stateStyles.glow} ${dimensions} flex items-center justify-center transition-all ${
         interactive ? 'cursor-pointer hover:scale-110' : ''
-      } ${className}`}
+      } ${bootPulse ? 'animate-diode-boot' : ''} ${className}`}
     >
       <div className={`rounded-full ${stateStyles.dot} ${dotDimensions} transition-colors`} />
     </div>

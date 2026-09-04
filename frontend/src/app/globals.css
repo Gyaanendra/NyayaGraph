@@ -283,10 +283,10 @@ body {
   color: #FFFFFF;
   border-radius: 0px;
   overflow: hidden;
-  transition: background-color 140ms ease-out;
+  transition: background-color 150ms cubic-bezier(0.2, 0, 0, 1);
 }
 .btn-folded-triangle:hover {
-  background-color: #152B47;
+  background-color: #264670; /* 1-2 shades brighter, no transform */
 }
 .btn-folded-triangle::after {
   content: '';
@@ -299,6 +299,10 @@ body {
   border-width: 0 0 12px 12px;
   border-color: transparent transparent #00D1FF transparent;
   pointer-events: none;
+  transition: border-color 150ms cubic-bezier(0.2, 0, 0, 1);
+}
+.btn-folded-triangle:hover::after {
+  border-color: transparent transparent #38E1FF transparent;
 }
 
 /* Faceted Geometric Wedge (like Reference 5 Manfred Button) */
@@ -308,10 +312,11 @@ body {
   color: #FFFFFF;
   border-radius: 0px;
   overflow: hidden;
-  transition: background-color 140ms ease-out;
+  transition: background-color 150ms cubic-bezier(0.2, 0, 0, 1);
 }
+.compact-card-container:hover .btn-folded-faceted,
 .btn-folded-faceted:hover {
-  background-color: #162C49;
+  background-color: #264670;
 }
 .btn-folded-faceted::after {
   content: '';
@@ -322,6 +327,13 @@ body {
   width: 24px;
   background: linear-gradient(135deg, transparent 35%, #0088CC 35%, #0088CC 65%, #00D1FF 65%);
   pointer-events: none;
+  transition: transform 200ms cubic-bezier(0.2, 0, 0, 1), filter 200ms ease-out;
+  transform-origin: right center;
+}
+.compact-card-container:hover .btn-folded-faceted::after,
+.btn-folded-faceted:hover::after {
+  transform: scale(1.15) translate(1px, -1px);
+  filter: brightness(1.2);
 }
 
 /* Geometric Triangle Crop Masks */
@@ -410,3 +422,108 @@ body {
 .animate-diode-pulse {
   animation: diode-pulse 1.3s ease-in-out infinite;
 }
+
+/* =========================================================================
+   DIEGETIC MOTION DESIGN SYSTEM
+   Restrained, purposeful, instrument-calibrating motion.
+   Deceleration curves, 0% overshoot, strictly under 900ms.
+   ========================================================================= */
+
+/* 1. Nav Link Slide Underline (150ms slide from left) */
+.nav-link-slide {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.nav-link-slide::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  background-color: #00D1FF;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 150ms cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+}
+.nav-link-slide:hover::after {
+  transform: scaleX(1);
+}
+
+/* 2. Compact Card Image Desaturation Transition */
+.card-image-desaturate {
+  filter: saturate(0.65) contrast(1.02);
+  transition: filter 250ms cubic-bezier(0.2, 0, 0, 1), transform 350ms cubic-bezier(0.2, 0, 0, 1);
+}
+.compact-card-container:hover .card-image-desaturate {
+  filter: saturate(1.0) contrast(1.05);
+}
+
+/* 3. Hero Triangle Mask Wipe (600ms ease-out from left to right) */
+@keyframes triangle-wipe {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.2;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+.animate-triangle-wipe {
+  animation: triangle-wipe 600ms cubic-bezier(0.2, 0, 0, 1) 100ms both;
+}
+
+/* 4. Headline Fade-Up (translateY 12px -> 0, opacity 0 -> 1, 400ms) */
+@keyframes headline-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-headline-up {
+  animation: headline-fade-up 400ms cubic-bezier(0.2, 0, 0, 1) 80ms both;
+}
+
+/* 5. Timeline Scrubber Draw-In (width 0% -> 100%, 900ms ease-out) */
+@keyframes scrubber-draw {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.2;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+.animate-scrubber-draw {
+  animation: scrubber-draw 900ms cubic-bezier(0.2, 0, 0, 1) 400ms both;
+}
+
+/* 6. Nav Bar Status Ring Boot Pulse (single pulse scale 1 -> 1.08 -> 1, then static) */
+@keyframes diode-boot {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(0, 209, 255, 0.7);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(0, 209, 255, 0.45);
+  }
+}
+.animate-diode-boot {
+  animation: diode-boot 1000ms cubic-bezier(0.2, 0, 0, 1) 200ms 1 forwards;
+}
+

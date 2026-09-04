@@ -7,6 +7,7 @@ interface TimelineScrubberProps {
   timestamp?: string;
   markerColor?: 'yellow' | 'cyan';
   syncWithScroll?: boolean;
+  drawIn?: boolean;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   timestamp = '01.34',
   markerColor = 'yellow',
   syncWithScroll = true,
+  drawIn = false,
   className = '',
 }) => {
   const [markerPercent, setMarkerPercent] = useState<number>(initialMarkerPos);
@@ -46,7 +48,7 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   const markerShadow = markerColor === 'yellow' ? 'shadow-[0_0_8px_#FFF500]' : 'shadow-[0_0_8px_#00D1FF]';
 
   return (
-    <div className={`w-full select-none ${className}`}>
+    <div className={`w-full select-none ${drawIn ? 'animate-scrubber-draw' : ''} ${className}`}>
       {/* Timestamp label floating right above the marker */}
       <div className="relative h-4 w-full">
         <span

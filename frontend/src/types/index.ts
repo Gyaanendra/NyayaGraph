@@ -47,6 +47,7 @@ export interface GraphNode {
   is_broker: boolean;
   is_locked: boolean;
   is_ghost: boolean;
+  confidence?: number;
   details: Record<string, any>;
   x?: number;
   y?: number;

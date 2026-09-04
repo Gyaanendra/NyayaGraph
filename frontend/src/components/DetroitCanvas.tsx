@@ -4,8 +4,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { GraphNode, GraphEdge } from '../types';
 import { CASE_CLUSTERS } from '../lib/casesData';
 import { 
-  ZoomIn, ZoomOut, RotateCcw, HelpCircle, X, Lock, 
-  User, Phone, Landmark, Radio, Shield, Sparkles
+  ZoomIn, ZoomOut, RotateCcw, HelpCircle, X, Sparkles, Flame
 } from 'lucide-react';
 import * as d3Force from 'd3-force';
 
@@ -49,8 +48,12 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
   const [scale, setScale] = useState<number>(1.0);
   const [isPanning, setIsPanning] = useState<boolean>(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [showLegend, setShowLegend] = useState<boolean>(externalShowLegend);
+  const [legendUserOverride, setLegendUserOverride] = useState<boolean | null>(null);
+  const showLegend = legendUserOverride !== null ? legendUserOverride : externalShowLegend;
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [priorityHeat, setPriorityHeat] = useState<boolean>(false);
+  const [syncTime, setSyncTime] = useState<number>(1);
+  const [isDraggingNode, setIsDraggingNode] = useState<boolean>(false);
 
   // Dragging a node in the physics simulation
   const draggedNodeRef = useRef<SimNode | null>(null);
@@ -108,12 +111,13 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
   const simNodesRef = useRef<SimNode[]>([]);
   const simLinksRef = useRef<SimLink[]>([]);
 
-  // Sync external legend toggle
+  // Sync live telemetry counter (ticks 1s to 5s)
   useEffect(() => {
-    if (externalShowLegend !== undefined) {
-      setShowLegend(externalShowLegend);
-    }
-  }, [externalShowLegend]);
+    const timer = setInterval(() => {
+      setSyncTime(prev => (prev >= 5 ? 1 : prev + 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Initialize and update simulation when nodes or edges change
   useEffect(() => {
@@ -209,11 +213,11 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Main Canvas Rendering Loop (60 FPS with label collision avoidance)
+  // Main Canvas Rendering Loop (60 FPS with label collision avoidance & living telemetry)
   useEffect(() => {
     let animationFrameId: number;
 
-    const render = () => {
+    const render = (time: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -260,7 +264,29 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
       }
       ctx.stroke();
 
-      // 2. Draw Cluster Boundaries (Convex / Bounding annotations)
+      // 1b. Ambient Horizontal Radar Scan Line (sweeps top-to-bottom every 7s)
+      const scanCycle = 7000;
+      const scanProgress = (time % scanCycle) / scanCycle;
+      const scanY = minY + scanProgress * (maxY - minY);
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0, 209, 255, 0.22)';
+      ctx.lineWidth = 1.2 / scale;
+      ctx.beginPath();
+      ctx.moveTo(minX, scanY);
+      ctx.lineTo(maxX, scanY);
+      ctx.stroke();
+
+      // Faint trailing scan wash
+      const trailHeight = 44 / scale;
+      const grad = ctx.createLinearGradient(0, scanY - trailHeight, 0, scanY);
+      grad.addColorStop(0, 'rgba(0, 209, 255, 0)');
+      grad.addColorStop(1, 'rgba(0, 209, 255, 0.035)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(minX, scanY - trailHeight, maxX - minX, trailHeight);
+      ctx.restore();
+
+      // 2. Draw Cluster Boundaries (Convex / Bounding annotations with rotating containment field)
       const boundaries = CASE_CLUSTERS[caseId] || CASE_CLUSTERS["CASE_2026_NOIDA_112"];
       if (boundaries) {
         // Group nodes by community
@@ -273,7 +299,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
           }
         });
 
-        // Draw faint dashed bounding oval for clusters
+        // Draw faint rotating dashed bounding oval for clusters
         communityPoints.forEach((pts, cid) => {
           if (pts.length < 2) return;
           let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -291,7 +317,8 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
           const ry = Math.max((maxY - minY) / 2 + pad, 36);
 
           ctx.save();
-          ctx.setLineDash([4 / scale, 4 / scale]);
+          ctx.setLineDash([5 / scale, 5 / scale]);
+          ctx.lineDashOffset = -(time / 45) / scale; // Continuous slow rotation (~15s)
           ctx.strokeStyle = '#D5D5D2';
           ctx.lineWidth = 1 / scale;
           ctx.fillStyle = 'rgba(247, 247, 245, 0.4)';
@@ -312,7 +339,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         });
       }
 
-      // 3. Draw Edges / Links
+      // 3. Draw Edges / Links with Data Packets & Priority Heat Map
       const currentLinks = simLinksRef.current;
       currentLinks.forEach((link) => {
         const source = link.source as SimNode;
@@ -327,7 +354,22 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         ctx.globalAlpha = isDimmed ? 0.08 : isHighlighted ? 1.0 : 0.65;
 
         // Color & style
-        if (link.isSuspicious) {
+        if (priorityHeat) {
+          const maxCentrality = Math.max(source.centrality, target.centrality);
+          if (maxCentrality > 0.35 || source.isBroker || target.isBroker) {
+            ctx.strokeStyle = '#DC2626';
+            ctx.lineWidth = (isHighlighted ? 2.8 : 1.8) / scale;
+            ctx.setLineDash([]);
+          } else if (maxCentrality > 0.1) {
+            ctx.strokeStyle = '#EAB308';
+            ctx.lineWidth = (isHighlighted ? 2.2 : 1.4) / scale;
+            ctx.setLineDash([]);
+          } else {
+            ctx.strokeStyle = '#CBD5E1';
+            ctx.lineWidth = 1 / scale;
+            ctx.setLineDash([]);
+          }
+        } else if (link.isSuspicious) {
           ctx.strokeStyle = '#D6483C';
           ctx.lineWidth = (isHighlighted ? 2.5 : 1.6) / scale;
           ctx.setLineDash([4 / scale, 3 / scale]);
@@ -352,10 +394,10 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
           const dy = target.y - source.y;
           const angle = Math.atan2(dy, dx);
           const headLen = 7 / scale;
-          const arrowX = target.x - Math.cos(angle) * (target.radius + 3);
-          const arrowY = target.y - Math.sin(angle) * (target.radius + 3);
+          const arrowX = target.x - Math.cos(angle) * (target.radius + 5);
+          const arrowY = target.y - Math.sin(angle) * (target.radius + 5);
 
-          ctx.fillStyle = link.isSuspicious ? '#D6483C' : '#00C2E0';
+          ctx.fillStyle = priorityHeat ? '#DC2626' : (link.isSuspicious ? '#D6483C' : '#00C2E0');
           ctx.beginPath();
           ctx.moveTo(arrowX, arrowY);
           ctx.lineTo(
@@ -368,12 +410,24 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
           );
           ctx.closePath();
           ctx.fill();
+
+          // Data-Flow Packet Dots traveling along active link (1.4s loop)
+          const packetProgress1 = ((time / 1400) % 1);
+          const packetProgress2 = (((time / 1400) + 0.5) % 1);
+          [packetProgress1, packetProgress2].forEach(p => {
+            const px = source.x! + (target.x! - source.x!) * p;
+            const py = source.y! + (target.y! - source.y!) * p;
+            ctx.beginPath();
+            ctx.arc(px, py, 2.2 / scale, 0, 2 * Math.PI);
+            ctx.fillStyle = priorityHeat ? '#DC2626' : (link.isSuspicious ? '#D6483C' : '#00C2E0');
+            ctx.fill();
+          });
         }
 
         ctx.restore();
       });
 
-      // 4. Draw Nodes
+      // 4. Draw Nodes with Confidence Rings & Scan Proximity Flash
       const currentNodes = simNodesRef.current;
       currentNodes.forEach((node) => {
         if (node.x === undefined || node.y === undefined) return;
@@ -387,10 +441,44 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         ctx.save();
         ctx.globalAlpha = isDimmed ? 0.18 : 1.0;
 
+        // Scan line proximity highlight pulse (~150ms flash as scan crosses node)
+        const distToScan = Math.abs(node.y - scanY);
+        const isNearScan = distToScan < 22 / scale;
+        const scanPulseAlpha = isNearScan ? (1 - distToScan / (22 / scale)) * 0.45 : 0;
+
+        if (scanPulseAlpha > 0) {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.radius + 6 / scale, 0, 2 * Math.PI);
+          ctx.fillStyle = `rgba(0, 209, 255, ${scanPulseAlpha * 0.35})`;
+          ctx.fill();
+          ctx.strokeStyle = `rgba(0, 209, 255, ${scanPulseAlpha * 0.9})`;
+          ctx.lineWidth = 1.5 / scale;
+          ctx.stroke();
+        }
+
+        // Node Confidence Ring (Minority Report certainty indicator)
+        const confidence = node.raw.confidence ?? (node.isBroker ? 0.92 : Math.min(0.96, Math.max(0.42, 0.45 + node.centrality * 1.8)));
+        const ringRadius = node.radius + 3.2 / scale;
+        const isHighConfidence = confidence >= 0.75 || node.isBroker;
+
+        // Track (faint background circle)
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, ringRadius, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(218, 218, 216, 0.45)';
+        ctx.lineWidth = 1 / scale;
+        ctx.stroke();
+
+        // Partial confidence arc
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, ringRadius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * confidence);
+        ctx.strokeStyle = isHighConfidence ? '#00D1FF' : '#9CA3AF';
+        ctx.lineWidth = 1.4 / scale;
+        ctx.stroke();
+
         // Outer Ring / Glow for selected or hovered node
         if (isSelected || isHovered) {
           ctx.beginPath();
-          ctx.arc(node.x, node.y, node.radius + 4 / scale, 0, 2 * Math.PI);
+          ctx.arc(node.x, node.y, node.radius + 6 / scale, 0, 2 * Math.PI);
           ctx.strokeStyle = isSelected ? '#00C2E0' : '#1BA8D1';
           ctx.lineWidth = 2.5 / scale;
           ctx.stroke();
@@ -400,7 +488,27 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, 2 * Math.PI);
 
-        if (node.isBroker) {
+        if (priorityHeat) {
+          if (node.isBroker || node.centrality > 0.35) {
+            ctx.fillStyle = '#DC2626'; // High Priority: Red
+            ctx.fill();
+            ctx.strokeStyle = '#991B1B';
+            ctx.lineWidth = 2.5 / scale;
+            ctx.stroke();
+          } else if (node.centrality > 0.1) {
+            ctx.fillStyle = '#EAB308'; // Medium: Amber Gold
+            ctx.fill();
+            ctx.strokeStyle = '#CA8A04';
+            ctx.lineWidth = 2 / scale;
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = '#94A3B8'; // Low: Slate Grey
+            ctx.fill();
+            ctx.strokeStyle = '#64748B';
+            ctx.lineWidth = 1 / scale;
+            ctx.stroke();
+          }
+        } else if (node.isBroker) {
           // Central structural broker: Charcoal #1A1A1A with cyan border
           ctx.fillStyle = '#1A1A1A';
           ctx.fill();
@@ -494,7 +602,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         const boxWidth = textWidth + padX * 2;
         const boxHeight = textHeight + padY * 2;
 
-        let labelX = node.x - boxWidth / 2;
+        const labelX = node.x - boxWidth / 2;
         let labelY = node.y + node.radius + 4 / scale;
 
         // Collision avoidance check against already drawn labels
@@ -559,7 +667,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
 
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [pan, scale, hoveredNodeId, selectedNodeId, activeFocusId, activeConnectedNodeIds, activeConnectedEdgeIds, caseId]);
+  }, [pan, scale, hoveredNodeId, selectedNodeId, activeFocusId, activeConnectedNodeIds, activeConnectedEdgeIds, caseId, priorityHeat]);
 
   // Convert client coordinate to simulation world coordinate
   const screenToWorld = useCallback((clientX: number, clientY: number) => {
@@ -595,6 +703,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
     if (hitNode) {
       // Start Dragging Node & Pin in Simulation
       isDraggingNodeRef.current = true;
+      setIsDraggingNode(true);
       draggedNodeRef.current = hitNode;
       hitNode.fx = hitNode.x;
       hitNode.fy = hitNode.y;
@@ -644,6 +753,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
       draggedNodeRef.current.fy = null;
       draggedNodeRef.current = null;
       isDraggingNodeRef.current = false;
+      setIsDraggingNode(false);
 
       const sim = simulationRef.current;
       if (sim) {
@@ -710,7 +820,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
       onClick={handleClick}
       onWheel={handleWheel}
       className={`relative w-full h-full min-h-[640px] overflow-hidden border border-[#DADAD8] bg-[#F2F2F0] select-none ${
-        isDraggingNodeRef.current ? 'cursor-grabbing' : isPanning ? 'cursor-grabbing' : hoveredNodeId ? 'cursor-pointer' : 'cursor-grab'
+        isDraggingNode ? 'cursor-grabbing' : isPanning ? 'cursor-grabbing' : hoveredNodeId ? 'cursor-pointer' : 'cursor-grab'
       }`}
     >
       {/* Viewfinder L-Corner Marks */}
@@ -718,6 +828,15 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
       <div className="corner-bracket-tr" />
       <div className="corner-bracket-bl" />
       <div className="corner-bracket-br" />
+
+      {/* Peripheral Vision Telemetry (Person of Interest Machine Aesthetic) */}
+      <div className="absolute top-1 left-28 right-96 pointer-events-none opacity-[0.045] text-[8px] font-mono tracking-widest text-[#1A1A1A] select-none truncate">
+        SYS.THREAD 0x88F2 // MESH.TOPOLOGY 42.8ms // PARSING FIR 112/2026 // NODE.BC.RECALC // STREAM LATENCY 1.2ms // COORD VECTOR 85.9°
+      </div>
+      <div className="absolute bottom-2 left-6 right-6 pointer-events-none opacity-[0.045] text-[8px] font-mono tracking-widest text-[#1A1A1A] select-none flex justify-between">
+        <span>HEX.STREAM: 0x4E594159414752415048 // MEM.ALLOC 24.8MB // ENCRYPTION AES-GCM-256</span>
+        <span>RADAR.SWEEP 7000ms // CONVEX.DECOMPOSITION LOUVAIN // ANCHOR BNS.63(4)</span>
+      </div>
 
       {/* Top Left HUD Schematic Header */}
       <div className="absolute top-4 left-6 z-20 flex items-center gap-3 text-[11px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase pointer-events-none">
@@ -729,10 +848,28 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         <span className="text-[#00D1FF]">DRAGGABLE PHYSICS // LIVING DRIFT</span>
         <span>•</span>
         <span>{nodes.length} NODES // {edges.length} TIES</span>
+        <span>•</span>
+        <span className="text-[#00D1FF] flex items-center gap-1.5 font-semibold">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00D1FF] animate-pulse" />
+          <span>LAST SYNC: {syncTime}s AGO</span>
+        </span>
       </div>
 
-      {/* Top Right Zoom Controls & Legend Toggle */}
+      {/* Top Right Zoom Controls, Priority Heat & Legend Toggle */}
       <div className="absolute top-4 right-6 z-20 flex items-center gap-1.5 bg-[#F7F7F5] border border-[#DADAD8] p-1 rounded-[2px] shadow-none">
+        <button
+          onClick={() => setPriorityHeat(v => !v)}
+          title="Toggle Priority Heat Map (Centrality Heat Analysis)"
+          className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-[1px] transition-colors flex items-center gap-1 ${
+            priorityHeat 
+              ? 'bg-[#DC2626] text-white font-bold' 
+              : 'text-[#8A8A8A] hover:text-[#DC2626] hover:bg-[#FEE2E2]'
+          }`}
+        >
+          <Flame className="w-3 h-3 text-current" />
+          <span>PRIORITY HEAT</span>
+        </button>
+        <div className="h-3 w-[1px] bg-[#DADAD8] mx-0.5" />
         <button
           onClick={handleZoomIn}
           title="Zoom In"
@@ -757,7 +894,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
         </button>
         <div className="h-3 w-[1px] bg-[#DADAD8] mx-0.5" />
         <button
-          onClick={() => setShowLegend(v => !v)}
+          onClick={() => setLegendUserOverride(v => (v !== null ? !v : !externalShowLegend))}
           title="Toggle Legend"
           className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-[1px] transition-colors flex items-center gap-1 ${
             showLegend ? 'bg-[#00D1FF] text-[#1A1A1A] font-bold' : 'text-[#8A8A8A] hover:text-[#1A1A1A] hover:bg-[#EAEAE8]'
@@ -775,12 +912,34 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
             <span className="text-[10px] tracking-widest text-[#1A1A1A] uppercase font-bold">
               PHYSICS GRAPH TOPOLOGY LEGEND
             </span>
-            <button onClick={() => setShowLegend(false)} className="text-[#8A8A8A] hover:text-[#1A1A1A]">
+            <button onClick={() => setLegendUserOverride(false)} className="text-[#8A8A8A] hover:text-[#1A1A1A]">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="space-y-3 text-[11px]">
+            {priorityHeat && (
+              <div className="bg-[#FEF2F2] border border-[#FCA5A5] p-2 rounded-[1px]">
+                <div className="text-[9px] text-[#DC2626] uppercase tracking-wider mb-1 font-bold flex items-center gap-1">
+                  <Flame className="w-3 h-3" /> PRIORITY HEAT GRADIENT ACTIVE
+                </div>
+                <div className="grid grid-cols-3 gap-1 text-[9px] font-mono text-[#1A1A1A]">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 bg-[#DC2626] rounded-full" />
+                    <span>BROKER / HIGH</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 bg-[#EAB308] rounded-full" />
+                    <span>MEDIUM</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 bg-[#94A3B8] rounded-full" />
+                    <span>PERIPHERAL</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <div className="text-[9px] text-[#8A8A8A] uppercase tracking-wider mb-1.5 font-semibold">
                 NODE ENTITY TYPES
@@ -837,7 +996,7 @@ export const DetroitCanvas: React.FC<DetroitCanvasProps> = ({
             </div>
 
             <div className="border-t border-[#E7E7E5] pt-2 text-[9px] text-[#8A8A8A] leading-tight">
-              * Click and drag any node to pin it and watch the graph adapt in real time. Hover to spotlight direct connections; click to lock inspection dossier.
+              * Click and drag any node to pin it. Hover to spotlight direct connections; click to lock inspection dossier. Ambient radar line checks live entity certainty every 7s.
             </div>
           </div>
         </div>

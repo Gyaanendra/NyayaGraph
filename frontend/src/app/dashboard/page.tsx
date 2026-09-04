@@ -94,6 +94,8 @@ export default function InvestigatorConsole() {
     "act_2": true, // pre-checked example
   });
 
+  const [expandEntities, setExpandEntities] = useState<boolean>(false);
+
   // Modals state
   const [statsOpen, setStatsOpen] = useState<boolean>(false);
   const [patternsOpen, setPatternsOpen] = useState<boolean>(false);
@@ -113,6 +115,9 @@ export default function InvestigatorConsole() {
   const rankedEntities = [...currentCase.graph.nodes]
     .filter(n => n.category === 'PERSON' || n.category === 'PHONE' || n.category === 'BANK_ACCOUNT')
     .sort((a, b) => b.betweenness_score - a.betweenness_score);
+
+  const displayedEntities = expandEntities ? rankedEntities : rankedEntities.slice(0, 4);
+  const remainingCount = rankedEntities.length - 4;
 
   // Recommended actions for current case
   const actionsList = DEFAULT_ACTIONS[selectedCaseId] || DEFAULT_ACTIONS["CASE_2026_NOIDA_112"];
@@ -216,29 +221,34 @@ export default function InvestigatorConsole() {
       </header>
 
       {/* =========================================================================
-          2. TOP STATUS BAR (THIN METRICS STRIP BELOW MAIN NAV)
+          2. TOP STATUS BAR (STANDARDIZED 48PX METRICS STRIP)
           ========================================================================= */}
-      <div className="h-9 border-b border-[#DADAD8] bg-[#FAF9F7] px-8 flex items-center text-[10px] font-mono tracking-[0.14em] uppercase text-[#8A8A8A] divide-x divide-[#DADAD8]">
-        <div className="pr-6 flex items-center gap-2">
-          <span>ACTIVE CASES:</span>
-          <span className="font-bold text-[#1A1A1A]">4</span>
+      <div className="h-12 border-b border-[#DADAD8] bg-[#FAF9F7] px-8 flex items-center justify-between text-xs font-mono uppercase">
+        {/* Left 4 stats cluster with 32px gap */}
+        <div className="flex items-center gap-8">
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[10px] text-[#8A8A8A] font-mono tracking-[0.14em]">ACTIVE CASES:</span>
+            <span className="text-[14px] font-bold text-[#1A1A1A] font-mono">4</span>
+          </div>
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[10px] text-[#8A8A8A] font-mono tracking-[0.14em]">TOTAL LOSS TRACKED:</span>
+            <span className="text-[14px] font-bold text-[#1A1A1A] font-mono">₹94,40,000</span>
+          </div>
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[10px] text-[#8A8A8A] font-mono tracking-[0.14em]">ENTITIES FLAGGED:</span>
+            <span className="text-[14px] font-bold text-[#1A1A1A] font-mono">18</span>
+          </div>
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[10px] text-[#8A8A8A] font-mono tracking-[0.14em]">OPEN ALERTS:</span>
+            {/* Saturated focus metric */}
+            <span className="text-[14px] font-bold text-[#00C2E0] font-mono">4 CRITICAL</span>
+          </div>
         </div>
-        <div className="px-6 flex items-center gap-2">
-          <span>TOTAL LOSS TRACKED:</span>
-          <span className="font-bold text-[#1A1A1A]">₹94,40,000</span>
-        </div>
-        <div className="px-6 flex items-center gap-2">
-          <span>ENTITIES FLAGGED:</span>
-          <span className="font-bold text-[#1A1A1A]">18</span>
-        </div>
-        <div className="px-6 flex items-center gap-2">
-          <span>OPEN ALERTS:</span>
-          {/* Focus metric rendered in single saturated cyan */}
-          <span className="font-bold text-[#00C2E0]">4 CRITICAL</span>
-        </div>
-        <div className="pl-6 flex items-center gap-2 ml-auto text-[#8A8A8A]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#1BA8D1]" />
-          <span>STATUTORY FRAMEWORK // BNS 2023 & BSA SEC 63(4)</span>
+
+        {/* Right Statutory Framework note with clear vertical divider */}
+        <div className="border-l border-[#DADAD8] pl-8 h-6 flex items-center gap-2.5 text-[#737373]">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#1BA8D1] flex-shrink-0" />
+          <span className="text-[10px] font-mono tracking-[0.14em]">STATUTORY FRAMEWORK // BNS 2023 & BSA SEC 63(4)</span>
         </div>
       </div>
 
@@ -314,15 +324,18 @@ export default function InvestigatorConsole() {
                       {item.police_station}
                     </div>
 
-                    <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#E7E7E5] text-[9px] font-mono text-[#8A8A8A]">
-                      <span>{item.accused_count} ACCUSED</span>
-                      <span>LOSS: {item.defrauded_amount || "₹14.5L"}</span>
+                    <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#E7E7E5] text-[9px] font-mono">
+                      <div className="flex items-center gap-2 text-[#7A7A78]">
+                        <span>{item.accused_count} ACCUSED</span>
+                        <span className="text-[#C5C5C2]">•</span>
+                        <span className="font-medium text-[#4A4A4A]">LOSS: {item.defrauded_amount || "₹14.5L"}</span>
+                      </div>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenGraph(item.case_id);
                         }}
-                        className="text-[#1BA8D1] hover:underline font-medium"
+                        className="text-[#1BA8D1] hover:text-[#00C2E0] hover:underline font-medium ml-auto"
                       >
                         DIAGRAM →
                       </button>
@@ -342,58 +355,86 @@ export default function InvestigatorConsole() {
             <div className="corner-bracket-bl" />
             <div className="corner-bracket-br" />
 
-            <div className="space-y-5">
+            <div>
               {/* Top Meta Bar */}
               <div className="flex items-center justify-between border-b border-[#DADAD8] pb-2.5 text-[10px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase">
                 <span>INVESTIGATOR WORKBENCH // {currentCase.case_id}</span>
                 <span className="text-[#1BA8D1]">{currentCase.date_time}</span>
               </div>
 
-              {/* 1. PRIORITY QUEUE STRIP (Horizontally scrollable row ranked by centrality) */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[9px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase font-semibold">
-                    PRIORITY FLAGGED ENTITIES // RANKED BY BETWEENNESS CENTRALITY (BC)
-                  </span>
+              {/* 1. PRIORITY FLAGGED ENTITIES ROW (24px top margin separating it from top bar) */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase font-semibold">
+                      PRIORITY FLAGGED ENTITIES
+                    </span>
+                    <span className="text-[9px] font-mono text-[#B8B8B6]">
+                      // RANKED BY CENTRALITY
+                    </span>
+                  </div>
                   <span className="text-[9px] font-mono text-[#1BA8D1]">CLICK TO FOCUS IN GRAPH</span>
                 </div>
 
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {rankedEntities.map((entity) => {
+                <div className="flex items-center gap-3 overflow-x-auto pb-1">
+                  {displayedEntities.map((entity) => {
                     const isBroker = entity.is_broker || entity.betweenness_score > 0.5;
                     return (
                       <button
                         key={entity.id}
                         onClick={() => handleFocusNode(entity)}
-                        className={`flex-shrink-0 px-3 py-1.5 border text-left rounded-[2px] transition-colors ${
+                        className={`min-w-[160px] flex-shrink-0 p-3 border text-left rounded-[2px] transition-colors ${
                           isBroker 
                             ? 'bg-[#1E3A5F] text-white border-[#2A4C78] hover:border-[#00C2E0]'
                             : 'bg-white text-[#1A1A1A] border-[#DADAD8] hover:border-[#1BA8D1]'
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-3 text-[8px] font-mono tracking-wider uppercase mb-0.5">
+                        <div className="text-[8px] font-mono tracking-wider uppercase mb-1">
                           <span className={isBroker ? 'text-[#00C2E0] font-semibold' : 'text-[#8A8A8A]'}>
                             {entity.category}
                           </span>
-                          <span className={isBroker ? 'text-white font-bold' : 'text-[#1A1A1A] font-medium'}>
-                            BC: {entity.betweenness_score.toFixed(3)}
-                          </span>
                         </div>
-                        <div className="text-[11px] font-medium tracking-[0.04em] uppercase truncate max-w-[150px]">
+                        <div className="text-[11px] font-medium tracking-[0.03em] uppercase truncate max-w-[150px]">
                           {entity.label}
                         </div>
-                        <div className={`text-[8px] font-mono truncate max-w-[150px] mt-0.5 ${
-                          isBroker ? 'text-[#A0C4DF]' : 'text-[#8A8A8A]'
-                        }`}>
-                          {entity.sublabel || 'Entity Member'}
+                        <div className="flex items-center justify-between gap-1 text-[8px] font-mono mt-1.5 pt-1.5 border-t border-[#EAEAEA]/20">
+                          <span className={`truncate max-w-[90px] ${isBroker ? 'text-[#A0C4DF]' : 'text-[#8A8A8A]'}`}>
+                            {entity.sublabel || 'Entity Member'}
+                          </span>
+                          <span className={isBroker ? 'text-[#00C2E0] font-medium' : 'text-[#8A8A8A]'}>
+                            BC {entity.betweenness_score.toFixed(3)}
+                          </span>
                         </div>
                       </button>
                     );
                   })}
+
+                  {remainingCount > 0 && !expandEntities && (
+                    <button
+                      onClick={() => setExpandEntities(true)}
+                      className="min-w-[110px] flex-shrink-0 p-3 border border-dashed border-[#DADAD8] hover:border-[#1BA8D1] bg-[#FAF9F7] text-center rounded-[2px] transition-colors flex flex-col justify-center items-center h-[74px]"
+                    >
+                      <span className="text-[11px] font-mono font-bold text-[#1BA8D1]">+{remainingCount} MORE</span>
+                      <span className="text-[8px] font-mono text-[#8A8A8A] uppercase mt-0.5">EXPAND QUEUE</span>
+                    </button>
+                  )}
+
+                  {expandEntities && remainingCount > 0 && (
+                    <button
+                      onClick={() => setExpandEntities(false)}
+                      className="min-w-[110px] flex-shrink-0 p-3 border border-dashed border-[#DADAD8] hover:border-[#1BA8D1] bg-[#FAF9F7] text-center rounded-[2px] transition-colors flex flex-col justify-center items-center h-[74px]"
+                    >
+                      <span className="text-[10px] font-mono font-bold text-[#8A8A8A]">COLLAPSE</span>
+                      <span className="text-[8px] font-mono text-[#8A8A8A] uppercase mt-0.5">SHOW TOP 4</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* 2. CASE HEADLINE & SUMMARY */}
+              {/* Standardized Hairline Section Divider (24px margin above/below) */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* 2. CASE HEADLINE BLOCK */}
               <div>
                 <h2 className="text-2xl font-light text-[#1A1A1A] tracking-[0.01em] uppercase">
                   {currentCase.title}
@@ -401,58 +442,85 @@ export default function InvestigatorConsole() {
                 <div className="text-xs font-mono text-[#8A8A8A] mt-1 tracking-[0.08em] uppercase">
                   {currentCase.police_station} • {currentCase.investigating_officer}
                 </div>
-
-                {/* Charges */}
-                <div className="mt-3 p-3 bg-white border border-[#DADAD8] text-xs font-mono text-[#1A1A1A] rounded-[1px]">
-                  <strong className="text-[#1BA8D1] uppercase">STATUTORY CHARGES:</strong> {currentCase.bns_sections}
-                </div>
-
-                {/* Summary */}
-                <p className="mt-3 text-xs text-[#8A8A8A] leading-relaxed max-w-[720px]">
-                  {currentCase.summary}
-                </p>
               </div>
 
-              {/* 3. CASE DOSSIER TILES */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="border border-[#DADAD8] p-3 bg-white rounded-[2px]">
+              {/* Standardized Hairline Section Divider */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* STATUTORY CHARGES */}
+              <div className="p-3 bg-white border border-[#DADAD8] text-xs font-mono text-[#1A1A1A] rounded-[1px]">
+                <strong className="text-[#1BA8D1] uppercase">STATUTORY CHARGES:</strong> {currentCase.bns_sections}
+              </div>
+
+              {/* Standardized Hairline Section Divider */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* CASE SUMMARY PARAGRAPH */}
+              <p className="text-xs text-[#666666] leading-relaxed max-w-[760px]">
+                {currentCase.summary}
+              </p>
+
+              {/* Standardized Hairline Section Divider */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* 3. CASE DOSSIER TILES (Equal-width columns, consistent internal padding and matching height) */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="border border-[#DADAD8] p-3.5 bg-white rounded-[2px] flex flex-col justify-between min-h-[76px]">
                   <div className="text-[9px] font-mono tracking-[0.12em] text-[#8A8A8A] uppercase">
                     IDENTIFIED ACCUSED
                   </div>
-                  <div className="text-xl font-light text-[#1A1A1A] mt-0.5">
-                    {currentCase.entities.filter(e => e.category === 'PERSON').length || 4}
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-xl font-light text-[#1A1A1A] leading-none">
+                      {currentCase.entities.filter(e => e.category === 'PERSON').length || 4}
+                    </span>
+                    <span className="text-[9px] font-mono text-[#8A8A8A] uppercase">
+                      RECORDED SUBJECTS
+                    </span>
                   </div>
                 </div>
 
-                <div className="border border-[#DADAD8] p-3 bg-[#1E3A5F] text-white rounded-[2px]">
+                <div className="border border-[#2A4C78] p-3.5 bg-[#1E3A5F] text-white rounded-[2px] flex flex-col justify-between min-h-[76px] shadow-sm">
                   <div className="text-[9px] font-mono tracking-[0.12em] text-[#00C2E0] uppercase font-medium">
                     STRUCTURAL BROKER
                   </div>
-                  <div className="text-xs font-medium text-white mt-0.5 truncate">
-                    {currentCase.graph.stats.central_broker || "VIKRAM MALHOTRA"}
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-xs font-medium text-white tracking-wide truncate max-w-[150px]">
+                      {currentCase.graph.stats.central_broker || "VIKRAM MALHOTRA"}
+                    </span>
+                    <span className="text-[9px] font-mono text-[#00C2E0]">
+                      CENTRAL NODE
+                    </span>
                   </div>
                 </div>
 
-                <div className="border border-[#DADAD8] p-3 bg-white rounded-[2px]">
+                <div className="border border-[#DADAD8] p-3.5 bg-white rounded-[2px] flex flex-col justify-between min-h-[76px]">
                   <div className="text-[9px] font-mono tracking-[0.12em] text-[#8A8A8A] uppercase">
                     BSA SEC 63(4) DIGEST
                   </div>
-                  <div className="text-xs font-mono text-[#8A8A8A] mt-0.5 truncate">
-                    {currentCase.sha256_hash.substring(0, 16)}...
+                  <div className="flex items-baseline justify-between mt-1">
+                    <span className="text-xs font-mono text-[#4A4A4A] truncate max-w-[150px]">
+                      {currentCase.sha256_hash.substring(0, 16)}...
+                    </span>
+                    <span className="text-[9px] font-mono text-[#8A8A8A]">
+                      SHA256
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* 4. ENTITY TAG CLOUD */}
+              {/* Standardized Hairline Section Divider */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* 4. EXTRACTED ENTITIES TAG CLOUD */}
               <div>
-                <div className="text-[9px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase mb-1.5">
+                <div className="text-[9px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase mb-2">
                   EXTRACTED ENTITIES
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {currentCase.entities.map(e => (
                     <span 
                       key={e.id}
-                      className="px-2 py-0.5 bg-white border border-[#DADAD8] text-[10px] font-mono text-[#1A1A1A] rounded-[1px]"
+                      className="px-2 py-0.5 bg-white border border-[#DADAD8] text-[10px] font-mono text-[#3A3A3A] rounded-[1px]"
                     >
                       {e.name} <span className="text-[#8A8A8A]">[{e.category}]</span>
                     </span>
@@ -460,7 +528,10 @@ export default function InvestigatorConsole() {
                 </div>
               </div>
 
-              {/* 5. NEW: RECOMMENDED NEXT ACTIONS PANEL (Interactive Checkbox List) */}
+              {/* Standardized Hairline Section Divider */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* 5. RECOMMENDED ACTIONS PANEL (Interactive Checkbox List, 50% dimmed when complete) */}
               <div className="border border-[#DADAD8] bg-white p-4 rounded-[2px]">
                 <div className="flex items-center justify-between mb-3 border-b border-[#E7E7E5] pb-2">
                   <span className="text-[9px] font-mono tracking-[0.14em] text-[#1BA8D1] uppercase font-semibold">
@@ -478,10 +549,10 @@ export default function InvestigatorConsole() {
                       <div
                         key={action.id}
                         onClick={() => toggleAction(action.id)}
-                        className={`p-2.5 border rounded-[1px] flex items-start gap-3 cursor-pointer transition-colors ${
+                        className={`p-2.5 border rounded-[1px] flex items-start gap-3 cursor-pointer transition-all duration-150 ${
                           isDone 
-                            ? 'bg-[#FAF9F7] border-[#E2E2DE]' 
-                            : 'bg-white border-[#DADAD8] hover:border-[#1BA8D1]'
+                            ? 'bg-[#FAF9F7] border-[#E2E2DE] opacity-50' 
+                            : 'bg-white border-[#DADAD8] hover:border-[#1BA8D1] opacity-100'
                         }`}
                       >
                         {/* Interactive Square Checkbox */}
@@ -505,7 +576,7 @@ export default function InvestigatorConsole() {
                             </span>
                           </div>
                           <p className={`text-xs font-mono leading-tight ${
-                            isDone ? 'line-through text-[#B8B8B6]' : 'text-[#1A1A1A]'
+                            isDone ? 'line-through text-[#8A8A8A]' : 'text-[#1A1A1A]'
                           }`}>
                             {action.text}
                           </p>
@@ -516,7 +587,10 @@ export default function InvestigatorConsole() {
                 </div>
               </div>
 
-              {/* 6. NEW: CASE TIMELINE STRIP (Dated events pulled from case) */}
+              {/* Standardized Hairline Section Divider */}
+              <div className="border-t border-[#DADAD8] my-6" />
+
+              {/* 6. CASE TIMELINE STRIP */}
               <div className="border border-[#DADAD8] bg-white p-4 rounded-[2px]">
                 <div className="text-[9px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase mb-3">
                   INCIDENT TIMELINE // CHRONOLOGICAL EVENT STREAM

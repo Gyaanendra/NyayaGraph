@@ -11,6 +11,7 @@ import { StatusDiode, DiodeState } from '../components/StatusDiode';
 import { DetroitBrand } from '../components/DetroitBrand';
 import { TimelineScrubber } from '../components/TimelineScrubber';
 import { CompactCard, CompactCardData } from '../components/CompactCard';
+import { CalibratingText, ScrollReveal, ScrollHairline } from '../components/MotionComponents';
 
 export default function MarketingLandingPage() {
   const [activeSection2Tab, setActiveSection2Tab] = useState<'INFO' | 'SPEC'>('INFO');
@@ -82,15 +83,15 @@ export default function MarketingLandingPage() {
             <span className="text-[#00D1FF]">]</span>
           </div>
 
-          <a href="#characters" className="hover:text-[#1A1A1A] transition-colors">
+          <a href="#characters" className="nav-link-slide hover:text-[#1A1A1A] transition-colors py-1">
             CHARACTERS
           </a>
 
-          <a href="#cards" className="hover:text-[#1A1A1A] transition-colors">
+          <a href="#cards" className="nav-link-slide hover:text-[#1A1A1A] transition-colors py-1">
             GALLERY
           </a>
 
-          <Link href="/dashboard" className="text-[#00D1FF] hover:underline font-semibold">
+          <Link href="/dashboard" className="nav-link-slide text-[#00D1FF] font-semibold py-1">
             WORKBENCH →
           </Link>
         </nav>
@@ -103,7 +104,7 @@ export default function MarketingLandingPage() {
           <Link href="/dashboard" className="hover:text-[#1A1A1A] transition-colors">
             <User className="w-4 h-4" />
           </Link>
-          <StatusDiode state={diodeState} size="md" interactive={true} />
+          <StatusDiode state={diodeState} size="md" interactive={true} bootPulse={true} />
         </div>
       </header>
 
@@ -118,7 +119,7 @@ export default function MarketingLandingPage() {
         <section className="relative w-full pt-4 pb-8">
           {/* Faint Background Shards / Coordinates */}
           <div className="absolute top-2 right-12 text-[10px] font-mono text-[#B8B8B6] tracking-widest pointer-events-none">
-            05.05 // LAT 42.3314 N
+            <CalibratingText finalText="05.05 // LAT 42.3314 N" duration={800} />
           </div>
 
           <div className="grid grid-cols-12 gap-5 items-center">
@@ -130,8 +131,8 @@ export default function MarketingLandingPage() {
                 MHA SIH26189 // AI CRIMINAL NETWORK PROFILER
               </div>
 
-              {/* H1: Gotham Ultra / Display 60px */}
-              <h1 className="font-display text-[50px] lg:text-[60px] font-black tracking-tight text-[#1A1A1A] uppercase leading-[0.95] mb-5">
+              {/* H1: Gotham Ultra / Display 60px with subtle fade-up */}
+              <h1 className="font-display text-[50px] lg:text-[60px] font-black tracking-tight text-[#1A1A1A] uppercase leading-[0.95] mb-5 animate-headline-up">
                 NYAYAGRAPH
               </h1>
 
@@ -191,14 +192,14 @@ export default function MarketingLandingPage() {
 
               {/* Floating Faint Coordinate Numbers */}
               <div className="absolute top-2 left-6 text-[11px] font-mono text-[#00D1FF] tracking-widest z-20">
-                85.9 // VECTOR 45°
+                <CalibratingText finalText="85.9 // VECTOR 45°" duration={800} />
               </div>
               <div className="absolute bottom-6 left-16 text-[9px] font-mono text-[#8A8A8A] tracking-widest z-20">
-                REFLECT.MIRROR // 02.4
+                <CalibratingText finalText="REFLECT.MIRROR // 02.4" duration={800} />
               </div>
 
-              {/* Multi-Triangle Geometric Composition Container */}
-              <div className="relative w-[580px] h-[440px] flex items-center justify-center">
+              {/* Multi-Triangle Geometric Composition Container with Clip-Path Wipe */}
+              <div className="relative w-[580px] h-[440px] flex items-center justify-center animate-triangle-wipe">
 
                 {/* -------------------------------------------------------------
                     MIRRORED FADED REFLECTION SHADOW (Beneath Baseline)
@@ -374,9 +375,9 @@ export default function MarketingLandingPage() {
             </div>
           </div>
 
-          {/* Hero Bottom Scrubber Bar (Full-width Barcode Graphic + Yellow Marker) */}
+          {/* Hero Bottom Scrubber Bar (Full-width Barcode Graphic + Yellow Marker with left-to-right draw-in) */}
           <div className="mt-12 pt-4">
-            <TimelineScrubber markerColor="yellow" timestamp="01.34" initialMarkerPos={44} />
+            <TimelineScrubber markerColor="yellow" timestamp="01.34" initialMarkerPos={44} drawIn={true} />
 
             {/* Sub-Hero Strip */}
             <div className="mt-3 flex items-center justify-between text-[9px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase">
@@ -395,46 +396,49 @@ export default function MarketingLandingPage() {
         {/* =======================================================================
             SECTION 2: CONTENT / DETAIL (Chloe Split Layout Reference Pattern)
             ======================================================================= */}
-        <section id="characters" className="relative w-full pt-8 pb-12 border-t border-[#DADAD8]">
+        <section id="characters" className="relative w-full pt-8 pb-12">
+          {/* Scroll-triggered Hairline Divider (Draws left-to-right) */}
+          <ScrollHairline className="mb-8" />
+
           <div className="grid grid-cols-12 gap-8 items-center">
             
-            {/* Left Column: Headline, Copy, Action Link, 2-Tab Component */}
+            {/* Left Column: Headline, Copy, Action Link, 2-Tab Component with ScrollReveal */}
             <div className="col-span-12 lg:col-span-6 flex flex-col justify-center z-10">
-              
-              {/* Eyebrow */}
-              <div className="text-[10px] font-mono tracking-[0.18em] text-[#8A8A8A] uppercase mb-2">
-                SUBSYSTEM // ENTITY EXTRACTION &amp; FUSION
-              </div>
+              <ScrollReveal duration={450}>
+                {/* Eyebrow */}
+                <div className="text-[10px] font-mono tracking-[0.18em] text-[#8A8A8A] uppercase mb-2">
+                  SUBSYSTEM // ENTITY EXTRACTION &amp; FUSION
+                </div>
 
-              {/* Headline: Large, Regular Weight (Not Heavy Display Font) */}
-              <h2 className="text-[38px] lg:text-[44px] font-light tracking-[0.02em] text-[#1A1A1A] uppercase leading-[1.05] mb-5">
-                DETECTIVE INTELLIGENCE
-              </h2>
+                {/* Headline: Large, Regular Weight (Not Heavy Display Font) */}
+                <h2 className="text-[38px] lg:text-[44px] font-light tracking-[0.02em] text-[#1A1A1A] uppercase leading-[1.05] mb-5">
+                  DETECTIVE INTELLIGENCE
+                </h2>
 
-              {/* Dark first sentence */}
-              <p className="text-[14px] text-[#1A1A1A] font-medium leading-relaxed max-w-[440px] mb-3">
-                Autonomous entity extraction engine with closed-world verbatim span verification for Indian criminal proceedings.
-              </p>
+                {/* Dark first sentence */}
+                <p className="text-[14px] text-[#1A1A1A] font-medium leading-relaxed max-w-[440px] mb-3">
+                  Autonomous entity extraction engine with closed-world verbatim span verification for Indian criminal proceedings.
+                </p>
 
-              {/* Grey second paragraph from docs */}
-              <p className="text-[12.5px] text-[#8A8A8A] leading-relaxed max-w-[440px] mb-5">
-                Engineered specifically for the Ministry of Home Affairs mandate (SIH26189), NyayaGraph parses multi-page 
-                Devanagari FIRs in a single forward pass without token truncation, fusing phone numbers, state vehicle plates, 
-                and bank accounts directly with Call Detail Records (CDRs) to expose structural criminal syndicates.
-              </p>
+                {/* Grey second paragraph from docs */}
+                <p className="text-[12.5px] text-[#8A8A8A] leading-relaxed max-w-[440px] mb-5">
+                  Engineered specifically for the Ministry of Home Affairs mandate (SIH26189), NyayaGraph parses multi-page 
+                  Devanagari FIRs in a single forward pass without token truncation, fusing phone numbers, state vehicle plates, 
+                  and bank accounts directly with Call Detail Records (CDRs) to expose structural criminal syndicates.
+                </p>
 
-              {/* Download Action Link Pattern */}
-              <div className="mb-6">
-                <button
-                  onClick={() => setDownloadModalOpen(true)}
-                  className="inline-flex items-center gap-2 text-[11px] font-mono tracking-[0.14em] text-[#1A1A1A] hover:text-[#00D1FF] uppercase font-semibold transition-colors"
-                >
-                  <div className="w-4 h-4 bg-[#FFF500] rounded-full flex items-center justify-center text-[#1A1A1A]">
-                    <Download className="w-2.5 h-2.5 stroke-[2.5]" />
-                  </div>
-                  <span>DOWNLOAD BSA 63(4) SPECIFICATION</span>
-                </button>
-              </div>
+                {/* Download Action Link Pattern */}
+                <div className="mb-6">
+                  <button
+                    onClick={() => setDownloadModalOpen(true)}
+                    className="inline-flex items-center gap-2 text-[11px] font-mono tracking-[0.14em] text-[#1A1A1A] hover:text-[#00D1FF] uppercase font-semibold transition-colors"
+                  >
+                    <div className="w-4 h-4 bg-[#FFF500] rounded-full flex items-center justify-center text-[#1A1A1A]">
+                      <Download className="w-2.5 h-2.5 stroke-[2.5]" />
+                    </div>
+                    <span>DOWNLOAD BSA 63(4) SPECIFICATION</span>
+                  </button>
+                </div>
 
               {/* Two-Tab Toggle Component (Exact Reference Pattern) */}
               <div className="flex items-center gap-3 mt-2">
@@ -500,41 +504,43 @@ export default function MarketingLandingPage() {
                   </div>
                 )}
               </div>
+              </ScrollReveal>
             </div>
 
-            {/* Right Column: Full-Bleed Portrait + Ghost-Echo Effect */}
+            {/* Right Column: Full-Bleed Portrait + Ghost-Echo Effect with ScrollReveal */}
             <div className="col-span-12 lg:col-span-6 relative flex items-center justify-center min-h-[500px]">
-              
-              {/* Faint Floating Coordinates */}
-              <div className="absolute top-4 right-10 text-[10px] font-mono text-[#00D1FF] tracking-widest z-20">
-                0.1 // 00010263
-              </div>
+              <ScrollReveal delay={80} duration={500} className="w-full flex items-center justify-center relative">
+                {/* Faint Floating Coordinates that calibrate on scroll */}
+                <div className="absolute top-4 right-10 text-[10px] font-mono text-[#00D1FF] tracking-widest z-20">
+                  <CalibratingText finalText="0.1 // 00010263" triggerOnScroll={true} duration={800} />
+                </div>
 
-              {/* 1. DUPLICATED GHOST-ECHO SILHOUETTE (Scaled larger and faded behind) */}
-              <div 
-                className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-25 scale-125 z-0 select-none filter blur-[1px]"
-                aria-hidden="true"
-              >
-                <div className="relative w-[340px] h-[450px]">
+                {/* 1. DUPLICATED GHOST-ECHO SILHOUETTE (Scaled larger and faded behind) */}
+                <div 
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-25 scale-125 z-0 select-none filter blur-[1px]"
+                  aria-hidden="true"
+                >
+                  <div className="relative w-[340px] h-[450px]">
+                    <Image
+                      src="/images/chloe-portrait.jpg"
+                      alt="Echo silhouette"
+                      fill
+                      className="object-contain object-center duotone-cyberlife"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. FOREGROUND CRISP PORTRAIT */}
+                <div className="relative z-10 w-[300px] h-[440px] select-none">
                   <Image
                     src="/images/chloe-portrait.jpg"
-                    alt="Echo silhouette"
+                    alt="Detective Chloe RT600"
                     fill
-                    className="object-contain object-center duotone-cyberlife"
+                    priority
+                    className="object-contain object-center duotone-cyberlife drop-shadow-sm"
                   />
                 </div>
-              </div>
-
-              {/* 2. FOREGROUND CRISP PORTRAIT */}
-              <div className="relative z-10 w-[300px] h-[440px] select-none">
-                <Image
-                  src="/images/chloe-portrait.jpg"
-                  alt="Detective Chloe RT600"
-                  fill
-                  priority
-                  className="object-contain object-center duotone-cyberlife drop-shadow-sm"
-                />
-              </div>
+              </ScrollReveal>
 
               {/* Right-Edge Vertical Mini-Nav (Stacked Up/Down Buttons) */}
               <div className="absolute right-0 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1.5 z-20">
@@ -580,26 +586,33 @@ export default function MarketingLandingPage() {
         {/* =======================================================================
             SECTION 3: MOBILE / COMPACT CARD ROW (Manfred Reference Pattern)
             ======================================================================= */}
-        <section id="cards" className="relative w-full pt-8 pb-12 border-t border-[#DADAD8]">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <div className="text-[10px] font-mono tracking-[0.18em] text-[#00D1FF] uppercase font-semibold">
-                ACTIVE INVESTIGATIONS // CASE PROFILES
+        <section id="cards" className="relative w-full pt-8 pb-12">
+          {/* Scroll-triggered Hairline Divider */}
+          <ScrollHairline className="mb-8" />
+
+          <ScrollReveal duration={400}>
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <div className="text-[10px] font-mono tracking-[0.18em] text-[#00D1FF] uppercase font-semibold">
+                  ACTIVE INVESTIGATIONS // CASE PROFILES
+                </div>
+                <h3 className="text-2xl font-light tracking-[0.02em] text-[#1A1A1A] uppercase mt-1">
+                  KEY SYNDICATE ENTITY DOSSIERS
+                </h3>
               </div>
-              <h3 className="text-2xl font-light tracking-[0.02em] text-[#1A1A1A] uppercase mt-1">
-                KEY SYNDICATE ENTITY DOSSIERS
-              </h3>
-            </div>
 
-            <div className="text-right text-[10px] font-mono text-[#8A8A8A] uppercase">
-              <span>VIEWPORT: ~320PX COMPACT PROPORTION</span>
+              <div className="text-right text-[10px] font-mono text-[#8A8A8A] uppercase">
+                <span>VIEWPORT: ~320PX COMPACT PROPORTION</span>
+              </div>
             </div>
-          </div>
+          </ScrollReveal>
 
-          {/* Horizontal Card Row: 3 Reusable Compact Phone-Frame Cards */}
+          {/* Horizontal Card Row: 3 Reusable Compact Phone-Frame Cards with 80ms Stagger */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 justify-items-center">
-            {compactCards.map((card) => (
-              <CompactCard key={card.id} card={card} />
+            {compactCards.map((card, idx) => (
+              <ScrollReveal key={card.id} delay={idx * 80} duration={450}>
+                <CompactCard card={card} />
+              </ScrollReveal>
             ))}
           </div>
         </section>

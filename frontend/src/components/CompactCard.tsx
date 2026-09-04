@@ -27,7 +27,7 @@ export const CompactCard: React.FC<CompactCardProps> = ({ card, onCtaClick }) =>
   return (
     <div className="flex flex-col items-center select-none">
       {/* Phone-frame Card Container: Fixed ~320px width, sharp corners, hairline border */}
-      <div className="w-[320px] bg-white border border-[#DADAD8] flex flex-col justify-between overflow-hidden shadow-none rounded-[1px] relative">
+      <div className="w-[320px] bg-white border border-[#DADAD8] flex flex-col justify-between overflow-hidden shadow-none rounded-[1px] relative compact-card-container">
         {/* Faint corner brackets */}
         <div className="corner-bracket-tl" />
         <div className="corner-bracket-tr" />
@@ -75,7 +75,7 @@ export const CompactCard: React.FC<CompactCardProps> = ({ card, onCtaClick }) =>
             src={card.imageSrc}
             alt={card.title}
             fill
-            className="object-cover object-center duotone-cyberlife hover:scale-105 transition-transform duration-300"
+            className="object-cover object-center duotone-cyberlife card-image-desaturate hover:scale-105 transition-all duration-300"
           />
 
           {/* CTA Button Overlay with Triangle-Fold Corner Accent */}

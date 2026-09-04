@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { GraphNode, GraphEdge, ExtractedEntity, CrossCaseResemblance } from '../types';
-import { CheckCircle2, FileText, PhoneCall, X, Activity, ArrowRight, ShieldCheck, UserCheck, Link2 } from 'lucide-react';
+import { CheckCircle2, FileText, PhoneCall, X, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 
 interface CyberLifeDossierProps {
   selectedNode: GraphNode | null;
@@ -24,12 +24,53 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'SPEC' | 'INFO' | 'CONNECTIONS'>('SPEC');
+  const [retrievalStage, setRetrievalStage] = useState<'RETRIEVING' | 'VERIFIED' | 'READY'>('READY');
+  const [retrievalProgress, setRetrievalProgress] = useState<number>(100);
+
+  // Trigger 3-Stage Inspection Retrieval Sequence on node selection
+  useEffect(() => {
+    if (!selectedNode) {
+      const resetTimer = setTimeout(() => {
+        setRetrievalStage('READY');
+        setRetrievalProgress(100);
+      }, 0);
+      return () => clearTimeout(resetTimer);
+    }
+
+    // Stage 1: RETRIEVING RECORD (0 - 500ms)
+    const t0 = setTimeout(() => {
+      setRetrievalStage('RETRIEVING');
+      setRetrievalProgress(20);
+    }, 0);
+
+    const t1 = setTimeout(() => setRetrievalProgress(70), 200);
+    const t2 = setTimeout(() => setRetrievalProgress(95), 380);
+
+    // Stage 2: RECORD VERIFIED (500ms - 900ms)
+    const t3 = setTimeout(() => {
+      setRetrievalProgress(100);
+      setRetrievalStage('VERIFIED');
+    }, 500);
+
+    // Stage 3: READY / STAGGERED DATA FIELDS (900ms+)
+    const t4 = setTimeout(() => {
+      setRetrievalStage('READY');
+    }, 900);
+
+    return () => {
+      clearTimeout(t0);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
+  }, [selectedNode]);
 
   // Match corresponding entity
   const matchedEntity = entities.find(e => e.id === selectedNode?.id);
 
   // Compute direct connections of this node
-  const directConnections = React.useMemo(() => {
+  const directConnections = useMemo(() => {
     if (!selectedNode) return [];
     const conns: { node: GraphNode; edge: GraphEdge; direction: 'OUT' | 'IN' }[] = [];
     const nodeMap = new Map<string, GraphNode>();
@@ -81,7 +122,7 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
         </div>
 
         <div className="pt-3 border-t border-[#E7E7E5] text-[9px] font-mono text-[#8A8A8A] flex justify-between">
-          <span>INVESTIGATIVE AUDIT // BNS 2023</span>
+          <span>INVESTIGATIVE AUDIT {'//'} BNS 2023</span>
           <span>READY</span>
         </div>
       </div>
@@ -103,7 +144,7 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
         {/* Eyebrow Label & Status Indicator */}
         <div className="flex items-center justify-between border-b border-[#E7E7E5] pb-2">
           <div className="text-[10px] font-mono tracking-[0.14em] text-[#8A8A8A] uppercase">
-            REGISTRY // {selectedNode.category} // {selectedNode.id}
+            REGISTRY {'//'} {selectedNode.category} {'//'} {selectedNode.id}
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3.5 h-3.5 rounded-full border border-[#1BA8D1] flex items-center justify-center">
@@ -115,6 +156,49 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* 3-Stage Live Retrieval HUD Banner */}
+        <div className="mt-3">
+          {retrievalStage === 'RETRIEVING' && (
+            <div className="bg-[#1A1A1A] border border-[#00D1FF]/40 text-white p-2.5 rounded-[1px] font-mono mb-2">
+              <div className="flex items-center justify-between text-[10px] text-[#00D1FF] mb-1">
+                <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
+                  <Loader2 className="w-3 h-3 animate-spin text-[#00D1FF]" />
+                  RETRIEVING RECORD // RESOLVING TELEMETRY...
+                </span>
+                <span className="text-[10px]">{retrievalProgress}%</span>
+              </div>
+              <div className="w-full bg-[#333333] h-1 rounded-[1px] overflow-hidden">
+                <div 
+                  className="bg-[#00D1FF] h-full transition-all duration-150 ease-out"
+                  style={{ width: `${retrievalProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {retrievalStage === 'VERIFIED' && (
+            <div className="bg-[#E0F7FA] border border-[#00D1FF] text-[#006064] p-2 rounded-[1px] font-mono mb-2 flex items-center justify-between animate-pulse">
+              <span className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#00ACC1]" />
+                RECORD VERIFIED // CRYPTOGRAPHIC HASH MATCH
+              </span>
+              <span className="text-[8px] bg-[#00D1FF] text-[#1A1A1A] font-bold px-1.5 py-0.5 rounded-[1px]">
+                100% AUDIT
+              </span>
+            </div>
+          )}
+
+          {retrievalStage === 'READY' && (
+            <div className="flex items-center justify-between text-[9px] font-mono text-[#8A8A8A] border-b border-[#E7E7E5] pb-1.5 mb-2">
+              <span className="text-[#00A3C4] font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-[#00C2E0]" />
+                VERIFIED NETWORK DOSSIER
+              </span>
+              <span>CERT: BSA-63(4)</span>
+            </div>
+          )}
         </div>
 
         {/* Hero Headline (Kara Style: Large, Thin/Regular Weight, Never Bold) */}
@@ -139,10 +223,12 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
           </div>
         </div>
 
-        {/* 4-Tile Grid (Exact Tile Style as Case Dossier) */}
+        {/* 4-Tile Grid (Exact Tile Style as Case Dossier with Cascading Telemetry Reveal) */}
         <div className="grid grid-cols-2 gap-2.5 mt-4">
           {/* Tile 1: Betweenness Centrality */}
-          <div className={`border p-2.5 rounded-[2px] ${
+          <div className={`border p-2.5 rounded-[2px] transition-all duration-300 ${
+            retrievalStage === 'RETRIEVING' ? 'opacity-30 translate-y-1' : 'opacity-100 translate-y-0'
+          } ${
             isBroker 
               ? 'border-[#2A4C78] bg-[#1E3A5F] text-white' 
               : 'border-[#DADAD8] bg-white text-[#1A1A1A]'
@@ -163,7 +249,9 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
           </div>
 
           {/* Tile 2: Community / Cluster */}
-          <div className="border border-[#DADAD8] p-2.5 bg-white rounded-[2px]">
+          <div className={`border border-[#DADAD8] p-2.5 bg-white rounded-[2px] transition-all duration-300 delay-75 ${
+            retrievalStage === 'RETRIEVING' ? 'opacity-30 translate-y-1' : 'opacity-100 translate-y-0'
+          }`}>
             <div className="text-[8px] font-mono tracking-[0.12em] text-[#8A8A8A] uppercase">
               COMMUNITY CLUSTER
             </div>
@@ -176,7 +264,9 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
           </div>
 
           {/* Tile 3: Direct Degree */}
-          <div className="border border-[#DADAD8] p-2.5 bg-white rounded-[2px]">
+          <div className={`border border-[#DADAD8] p-2.5 bg-white rounded-[2px] transition-all duration-300 delay-150 ${
+            retrievalStage === 'RETRIEVING' ? 'opacity-30 translate-y-1' : 'opacity-100 translate-y-0'
+          }`}>
             <div className="text-[8px] font-mono tracking-[0.12em] text-[#8A8A8A] uppercase">
               DIRECT NETWORK LINKS
             </div>
@@ -189,7 +279,9 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
           </div>
 
           {/* Tile 4: Evidentiary Status */}
-          <div className="border border-[#DADAD8] p-2.5 bg-white rounded-[2px]">
+          <div className={`border border-[#DADAD8] p-2.5 bg-white rounded-[2px] transition-all duration-300 delay-200 ${
+            retrievalStage === 'RETRIEVING' ? 'opacity-30 translate-y-1' : 'opacity-100 translate-y-0'
+          }`}>
             <div className="text-[8px] font-mono tracking-[0.12em] text-[#8A8A8A] uppercase">
               STATUTORY STATUS
             </div>
@@ -242,7 +334,9 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
         </div>
 
         {/* Tab Body */}
-        <div className="mt-3 space-y-3">
+        <div className={`mt-3 space-y-3 transition-opacity duration-300 delay-300 ${
+          retrievalStage === 'RETRIEVING' ? 'opacity-40' : 'opacity-100'
+        }`}>
           {activeTab === 'SPEC' && (
             <div className="space-y-2.5 text-xs">
               {/* Recorded Aliases */}
@@ -291,7 +385,7 @@ export const CyberLifeDossier: React.FC<CyberLifeDossierProps> = ({
                   <FileText className="w-3 h-3" /> VERBATIM CLOSED-WORLD OCR SPAN
                 </div>
                 <div className="bg-[#FAF9F7] border border-[#DADAD8] p-2 font-mono text-[11px] text-[#1A1A1A] leading-relaxed">
-                  "{matchedEntity?.raw_span || selectedNode.label}"
+                  &quot;{matchedEntity?.raw_span || selectedNode.label}&quot;
                 </div>
                 <div className="text-[10px] font-mono text-[#1BA8D1] mt-1.5 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Character offset span verified in FIR text
