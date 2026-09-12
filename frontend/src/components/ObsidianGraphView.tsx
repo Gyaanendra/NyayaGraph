@@ -14,6 +14,13 @@ import {
 import { fetchAggregateGraph, fetchAllCases, type ApiCaseSummary } from "@/lib/api";
 import { useTheme } from "@/context/ThemeContext";
 import {
+  DOC_NODES,
+  DOC_EDGES,
+  getStepPositions,
+  DOC_MARKDOWN_CONTENT,
+  type DocNode,
+} from "@/data/docGraphData";
+import {
   Folder,
   FolderOpen,
   Search,
@@ -180,14 +187,207 @@ export default function ObsidianGraphView({
   const [linkForce, setLinkForce] = useState(1.0);
   const [linkDistance, setLinkDistance] = useState(240);
 
-  // Viewport & Pan/Zoom (Default percentage view locked to 40%)
+  // Viewport & Pan/Zoom (Default percentage view locked to 28% [25-30% range] for Syndicate, 100% for Doc Build)
   const [size, setSize] = useState({ w: 1100, h: 750 });
-  const [transform, setTransform] = useState({ x: 0, y: 0, k: 0.40 });
+  const [transform, setTransform] = useState({ x: 0, y: 0, k: 0.28 });
+  const [docTransform, setDocTransform] = useState({ x: 0, y: 0, k: 1.0 });
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
   const [, setTick] = useState(0);
 
-  // ── Timeline Progressive Node Addition Engine (Pop-up load feature) ──
-  const [revealedCount, setRevealedCount] = useState<number>(45);
-  const [isTimelinePlaying, setIsTimelinePlaying] = useState<boolean>(true);
+  // ── Graph View Mode: "doc-build" (6.3s Cinematic Sequence) | "cbi-syndicate" (500 Case Network) ──
+  const [graphMode, setGraphMode] = useState<"doc-build" | "cbi-syndicate">("doc-build");
+
+  // ── 6.3-Second Cinematic Doc Build-Out State Machine ──
+  // 0.0s - 0.6s: Idle state — Single root node "index" centered, gently breathing
+  // 0.6s - 5.5s: Spawning — 8 nodes spawn sequentially (~0.61s each), drawing arrow edges, layout smoothly rebalances
+  // 5.5s - 6.0s: Settle — Motion damps out, resting layout: index roughly center-top, children fanned below/around it
+  // 6.0s - 6.3s: Mouse cursor enters top-right, implying interactivity
+  // > 6.3s: Full interactivity (drag, hover, click to inspect markdown dossier, pan & zoom)
+  type DocAnimPhase = "idle" | "spawning" | "settling" | "interactive";
+  const [docStep, setDocStep] = useState<number>(0);
+  const [docPhase, setDocPhase] = useState<DocAnimPhase>("idle");
+  const [cursorVisible, setCursorVisible] = useState<boolean>(false);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [cursorOpacity, setCursorOpacity] = useState<number>(0);
+  const [isPlaying6s, setIsPlaying6s] = useState<boolean>(true);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>("index");
+  const [hoverDocId, setHoverDocId] = useState<string | null>(null);
+  const [draggedDocNodes, setDraggedDocNodes] = useState<Record<string, { x: number; y: number }>>({});
+
+  // 6.3-Second Sequence Timeout Controller (Clean, single-pass timeouts, zero 60fps re-render loops!)
+  useEffect(() => {
+    if (!isPlaying6s || graphMode !== "doc-build") return;
+
+    setDocStep(0);
+    setDocPhase("idle");
+    setCursorVisible(false);
+    setCursorOpacity(0);
+    setHoverDocId(null);
+
+    const timers: NodeJS.Timeout[] = [];
+
+    // Step 1: 0.60s (600ms) - Node 1 (01-soup-overview) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(1);
+        setDocPhase("spawning");
+      }, 600)
+    );
+
+    // Step 2: 1.21s (1212ms) - Node 2 (02-recommended-models) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(2);
+      }, 1212)
+    );
+
+    // Step 3: 1.82s (1825ms) - Node 3 (03-conda-environment-setup) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(3);
+      }, 1825)
+    );
+
+    // Step 4: 2.44s (2437ms) - Node 4 (04-experiment-template) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(4);
+      }, 2437)
+    );
+
+    // Step 5: 3.05s (3050ms) - Node 5 (05-training-guide-and-workflow) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(5);
+      }, 3050)
+    );
+
+    // Step 6: 3.66s (3662ms) - Node 6 (06-dataset-domains-roadmap) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(6);
+      }, 3662)
+    );
+
+    // Step 7: 4.28s (4275ms) - Node 7 (07-function-calling-guide) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(7);
+      }, 4275)
+    );
+
+    // Step 8: 4.89s (4887ms) - Node 8 (08-markdown-formatter-assistant-guide) appears
+    timers.push(
+      setTimeout(() => {
+        setDocStep(8);
+      }, 4887)
+    );
+
+    // Step 9: 5.50s (5500ms) - Settle: physics damps out, resting layout
+    timers.push(
+      setTimeout(() => {
+        setDocPhase("settling");
+      }, 5500)
+    );
+
+    // Step 10: 6.00s (6000ms) - Mouse cursor enters top-right
+    timers.push(
+      setTimeout(() => {
+        const cx = sizeRef.current.w / 2;
+        const cy = sizeRef.current.h / 2;
+        setCursorVisible(true);
+        setCursorPos({ x: cx + 240, y: cy - 90 });
+        setCursorOpacity(1);
+      }, 6000)
+    );
+
+    // Step 10b: 6.15s - Cursor glides toward 02-recommended-models
+    timers.push(
+      setTimeout(() => {
+        const cx = sizeRef.current.w / 2;
+        const cy = sizeRef.current.h / 2;
+        setCursorPos({ x: cx + 160, y: cy - 30 });
+        setHoverDocId("02-recommended-models");
+      }, 6150)
+    );
+
+    // Step 11: 6.30s (6300ms) - Complete! Transition cleanly into interactive resting state
+    timers.push(
+      setTimeout(() => {
+        setDocPhase("interactive");
+        setCursorOpacity(0);
+        setHoverDocId(null);
+        setIsPlaying6s(false);
+        setTimeout(() => setCursorVisible(false), 350);
+      }, 6300)
+    );
+
+    return () => {
+      timers.forEach(clearTimeout);
+    };
+  }, [isPlaying6s, graphMode]);
+
+  const skipDocAnimation = useCallback(() => {
+    setDocStep(8);
+    setDocPhase("interactive");
+    setCursorVisible(false);
+    setCursorOpacity(0);
+    setHoverDocId(null);
+    setIsPlaying6s(false);
+  }, []);
+
+  const replayDocAnimation = useCallback(() => {
+    setDraggedDocNodes({});
+    setDocTransform({ x: 0, y: 0, k: 1.0 });
+    setIsPlaying6s(true);
+  }, []);
+
+  // Base coordinates calculated for the current animation step
+  const basePositions = useMemo(() => {
+    const cx = size.w / 2;
+    const cy = size.h / 2;
+    return getStepPositions(docStep, cx, cy);
+  }, [docStep, size.w, size.h]);
+
+  const getDocNodePos = useCallback(
+    (id: string) => {
+      if (draggedDocNodes[id]) return draggedDocNodes[id];
+      return basePositions[id] ?? { x: size.w / 2, y: size.h / 2 };
+    },
+    [draggedDocNodes, basePositions, size.w, size.h]
+  );
+
+  // Progressive visible doc nodes & edges
+  const visibleDocNodes = useMemo(() => {
+    return DOC_NODES.slice(0, docStep + 1);
+  }, [docStep]);
+
+  const visibleDocEdges = useMemo(() => {
+    const visibleIds = new Set(visibleDocNodes.map((n) => n.id));
+    return DOC_EDGES.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
+  }, [visibleDocNodes]);
+
+  const focusDocNode = useCallback(
+    (id: string) => {
+      setSelectedDocId(id);
+      setSelectedNodeId(null);
+      setRightHudMode("details");
+      setSettingsPanelOpen(true);
+      const node = DOC_NODES.find((d) => d.id === id);
+      if (node) {
+        setOpenTabs((tabs) => {
+          if (tabs.some((t) => t.id === id)) return tabs;
+          return [...tabs, { id, label: node.filename }];
+        });
+      }
+    },
+    []
+  );
+
+  // ── CBI Case Network State (Settled once, frozen in place at 28% zoom) ──
+  const [revealedCount, setRevealedCount] = useState<number>(nodes.length || 1);
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState<boolean>(false);
 
   const dragRef = useRef<{ id: string } | null>(null);
   const pointerDownPosRef = useRef<{ id: string; x: number; y: number; time: number } | null>(null);
@@ -210,79 +410,30 @@ export default function ObsidianGraphView({
     return deg;
   }, [links]);
 
-  // Priority-ordered sequence for Timeline addition:
-  // Hubs -> Brokers -> Accused -> Financial/Corporate -> Properties -> Peripheral Records
   const timelineOrderedNodes = useMemo(() => {
     if (!nodes.length) return [];
-    const getTier = (n: SimNode) => {
-      if (isHub(n)) return 1;
-      if (n.is_broker) return 2;
-      if (n.category === "ACCUSED") return 3;
-      if (n.category === "COMPANY" || n.category === "BANK_ACCOUNT") return 4;
-      if (n.category === "PROPERTY") return 5;
-      return 6;
-    };
+    return nodes;
+  }, [nodes]);
 
-    return [...nodes].sort((a, b) => {
-      const tierA = getTier(a);
-      const tierB = getTier(b);
-      if (tierA !== tierB) return tierA - tierB;
-      const degA = degreeMap.get(a.id) || 0;
-      const degB = degreeMap.get(b.id) || 0;
-      return degB - degA;
-    });
-  }, [nodes, degreeMap]);
-
-  // Progressively revealed nodes & links to eliminate initial synchronous 8,000 DOM element lag
   const visibleNodes = useMemo(() => {
-    if (revealedCount >= nodes.length) return nodes;
-    return timelineOrderedNodes.slice(0, revealedCount);
-  }, [nodes, timelineOrderedNodes, revealedCount]);
-
-  const visibleNodeIds = useMemo(() => {
-    return new Set(visibleNodes.map((n) => n.id));
-  }, [visibleNodes]);
+    return nodes;
+  }, [nodes]);
 
   const visibleLinks = useMemo(() => {
-    if (revealedCount >= nodes.length) return links;
-    return links.filter((l) => {
-      const sId = typeof l.source === "object" ? (l.source as SimNode).id : String(l.source);
-      const tId = typeof l.target === "object" ? (l.target as SimNode).id : String(l.target);
-      return visibleNodeIds.has(sId) && visibleNodeIds.has(tId);
-    });
-  }, [links, visibleNodeIds, revealedCount, nodes.length]);
+    return links;
+  }, [links]);
 
-  // Timeline Stream Interval Ticker
-  useEffect(() => {
-    if (!isTimelinePlaying || !nodes.length) return;
-    if (revealedCount >= nodes.length) {
-      setIsTimelinePlaying(false);
-      return;
+  const skipAnimation = useCallback(() => {
+    setIsTimelinePlaying(false);
+  }, []);
+
+  const replayAnimation = useCallback(() => {
+    if (graphMode === "doc-build") {
+      replayDocAnimation();
+    } else {
+      fitView();
     }
-
-    const timer = setInterval(() => {
-      setRevealedCount((prev) => {
-        // Stream batches progressively: ~45 nodes per 32ms tick (~1.8s total reveal)
-        const batch = Math.max(35, Math.ceil(nodes.length / 55));
-        const next = prev + batch;
-        if (next >= nodes.length) {
-          setIsTimelinePlaying(false);
-          return nodes.length;
-        }
-        return next;
-      });
-    }, 32);
-
-    return () => clearInterval(timer);
-  }, [isTimelinePlaying, nodes.length, revealedCount]);
-
-  // If user focuses a node or searches, immediately reveal all nodes
-  useEffect(() => {
-    if ((selectedNodeId || searchFiles.trim()) && revealedCount < nodes.length) {
-      setRevealedCount(nodes.length);
-      setIsTimelinePlaying(false);
-    }
-  }, [selectedNodeId, searchFiles, nodes.length, revealedCount]);
+  }, [graphMode, replayDocAnimation]);
 
   // Direct Connections (Neighbors) lookup
   const neighbors = useMemo(() => {
@@ -441,13 +592,7 @@ export default function ObsidianGraphView({
         setLinks(simLinks);
         setLoading(false);
 
-        // Select the primary case hub by default to show details
-        if (simNodes.length > 0) {
-          const firstHub = simNodes.find((n) => isHub(n));
-          if (firstHub) {
-            setSelectedNodeId(firstHub.id);
-          }
-        }
+        // Keep initial selection clean so the 6.3s sequence plays seamlessly from the root node
 
         onStats?.({ cases: caseIds.length, nodes: simNodes.length, edges: simLinks.length });
       })
@@ -531,7 +676,7 @@ export default function ObsidianGraphView({
     return () => ro.disconnect();
   }, []);
 
-  // Fit camera with comfortable, readable scale (locked to default 40%)
+  // Fit camera with comfortable, readable scale (locked to default 28% [25-30% range])
   const fitView = useCallback(() => {
     if (!nodes.length || size.w <= 0 || size.h <= 0) return;
     const xs = nodes.map((n) => n.x ?? size.w / 2);
@@ -541,8 +686,8 @@ export default function ObsidianGraphView({
     const minY = Math.min(...ys),
       maxY = Math.max(...ys);
 
-    // Keep default percentage view locked to 40% (0.40) centered on master network
-    const k = 0.40;
+    // Keep default percentage view locked to 28% (0.28) centered on master network
+    const k = 0.28;
     const midX = (minX + maxX) / 2;
     const midY = (minY + maxY) / 2;
 
@@ -562,6 +707,14 @@ export default function ObsidianGraphView({
     return {
       x: (clientX - r.left - transform.x) / transform.k,
       y: (clientY - r.top - transform.y) / transform.k,
+    };
+  }
+
+  function toDocWorld(clientX: number, clientY: number, svg: SVGSVGElement) {
+    const r = svg.getBoundingClientRect();
+    return {
+      x: (clientX - r.left - docTransform.x) / docTransform.k,
+      y: (clientY - r.top - docTransform.y) / docTransform.k,
     };
   }
 
@@ -995,6 +1148,55 @@ export default function ObsidianGraphView({
 
             {/* Case Hierarchy Tree: Branches -> Cases -> Entities */}
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1 text-xs">
+              {/* Documentation Vault (6.3s Force Graph Files) */}
+              <div className="mb-2">
+                <div
+                  onClick={() => toggleFolder("doc-vault")}
+                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 cursor-pointer font-bold transition-colors ${
+                    isDark ? "text-white hover:bg-[#1e1e24]" : "text-[#1c1d22] hover:bg-[#ede8dc]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {expandedFolders["doc-vault"] !== false ? (
+                      <FolderOpen className="size-4 text-amber-500 shrink-0" />
+                    ) : (
+                      <Folder className="size-4 text-amber-500 shrink-0" />
+                    )}
+                    <span className={`truncate text-[12px] ${isDark ? "text-amber-400" : "text-amber-700"}`}>
+                      📂 Documentation Vault (6.3s Build)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-amber-500 font-mono px-2 py-0.5 rounded bg-amber-500/15">
+                    9 files
+                  </span>
+                </div>
+
+                {expandedFolders["doc-vault"] !== false && (
+                  <div className={`pl-3 space-y-0.5 border-l ml-3.5 mt-1 ${isDark ? "border-[#24242d]" : "border-[#e8e4da]"}`}>
+                    {DOC_NODES.map((d) => {
+                      const isSelected = selectedDocId === d.id && graphMode === "doc-build";
+                      return (
+                        <div
+                          key={d.id}
+                          onClick={() => {
+                            setGraphMode("doc-build");
+                            focusDocNode(d.id);
+                          }}
+                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors ${
+                            isSelected
+                              ? isDark ? "bg-[#25252e] text-amber-400 font-bold" : "bg-amber-100 text-amber-900 font-bold"
+                              : isDark ? "hover:bg-[#1e1e24] text-zinc-300" : "hover:bg-[#ede8dc] text-zinc-700"
+                          }`}
+                        >
+                          <FileText className="size-3.5 text-amber-500/80 shrink-0" />
+                          <span className="truncate text-xs font-mono">{d.filename}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* Master Syndicate Folder (Cleaned) */}
               <div>
                 <div
@@ -1201,18 +1403,56 @@ export default function ObsidianGraphView({
                 <ChevronRight className="size-4" />
               </button>
             </div>
-            <span
-              className={`font-bold text-[13px] ${
-                isDark ? "text-[#e4e4e7]" : "text-[#1c1d22]"
+            {/* Mode Switcher Buttons */}
+            <div
+              className={`flex items-center gap-1 rounded-lg border p-0.5 transition-colors ${
+                isDark ? "border-[#2a2c38] bg-[#14151c]" : "border-[#e5e0d5] bg-[#ede8dc]"
               }`}
             >
-              Graph view (500 Ingested Files • {visibleNodes.length === nodes.length ? `${nodes.length} Nodes` : `${visibleNodes.length} / ${nodes.length} Nodes`} • {visibleLinks.length} Edges)
-            </span>
+              <button
+                onClick={() => {
+                  setGraphMode("doc-build");
+                  replayDocAnimation();
+                }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
+                  graphMode === "doc-build"
+                    ? isDark
+                      ? "bg-amber-500 text-black shadow-xs"
+                      : "bg-amber-600 text-white shadow-xs"
+                    : isDark
+                    ? "text-[#8c90a2] hover:text-white"
+                    : "text-[#65666e] hover:text-[#1c1d22]"
+                }`}
+              >
+                <Play className="size-3 fill-current" />
+                <span>6.3s Doc Build-Out (Demo Video)</span>
+              </button>
+              <button
+                onClick={() => {
+                  setGraphMode("cbi-syndicate");
+                  setTimeout(() => fitView(), 50);
+                }}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
+                  graphMode === "cbi-syndicate"
+                    ? isDark
+                      ? "bg-purple-600 text-white shadow-xs"
+                      : "bg-purple-700 text-white shadow-xs"
+                    : isDark
+                    ? "text-[#8c90a2] hover:text-white"
+                    : "text-[#65666e] hover:text-[#1c1d22]"
+                }`}
+              >
+                <Network className="size-3" />
+                <span>CBI Case Syndicate (500 Files • 2,744 Nodes)</span>
+              </button>
+            </div>
+
             <button
-              title="More options"
+              onClick={() => replayAnimation()}
+              title="Replay sequence"
               className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-[#1c1d22]"}`}
             >
-              <MoreHorizontal className="size-4" />
+              <RotateCcw className="size-4 text-amber-500" />
             </button>
           </div>
 
@@ -1220,15 +1460,15 @@ export default function ObsidianGraphView({
           <div
             ref={wrapRef}
             className={`relative flex-1 overflow-hidden rounded-2xl border transition-colors ${
-              isDark ? "border-[#222227] bg-[#0e0e11]" : "border-[#e8e4da] bg-[#f5f3ec]"
+              isDark ? "border-[#1c1d24] bg-[#08090c]" : "border-[#e8e4da] bg-[#f5f3ec]"
             }`}
           >
-            {/* Timeline Addition Live Status Banner */}
-            {isTimelinePlaying && revealedCount < nodes.length && (
+            {/* 6.3-Second Cinematic Doc Build-Out Live Status Banner */}
+            {graphMode === "doc-build" && isPlaying6s && (
               <div
                 className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-xl backdrop-blur-md transition-all ${
                   isDark
-                    ? "border-amber-500/30 bg-[#141418]/90 text-amber-400"
+                    ? "border-amber-500/30 bg-[#0e0e12]/95 text-amber-400"
                     : "border-amber-500/30 bg-white/95 text-amber-800"
                 }`}
               >
@@ -1237,33 +1477,46 @@ export default function ObsidianGraphView({
                   <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
                 </span>
                 <span>
-                  Timeline Node Addition: Revealing {revealedCount} of {nodes.length} Nodes ({Math.round((revealedCount / (nodes.length || 1)) * 100)}%)
+                  {docPhase === "idle"
+                    ? "0.0–0.6s • Root Node 'index' Breathing (Idle)..."
+                    : docPhase === "spawning"
+                    ? `0.6–5.5s • Spawning Node ${docStep}/8: ${DOC_NODES[docStep]?.label}`
+                    : docPhase === "settling"
+                    ? "5.5–6.0s • Settle into Resting Layout..."
+                    : "6.0–6.3s • Cursor Entering (Interactive Preview)"}
                 </span>
                 <button
-                  onClick={() => {
-                    setRevealedCount(nodes.length);
-                    setIsTimelinePlaying(false);
-                  }}
+                  onClick={skipDocAnimation}
                   className={`ml-1 rounded px-2 py-0.5 text-[11px] font-bold transition-colors ${
                     isDark
                       ? "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300"
                       : "bg-amber-100 hover:bg-amber-200 text-amber-900"
                   }`}
                 >
-                  Skip to Full
+                  Skip
                 </button>
               </div>
             )}
 
-            {/* Smooth Animation Styles for Node Pop-in & Edge Connect */}
+            {/* Ultra-Fluid Organic Animation Styles for Node Pop-in, Idle Breathing & Edge Connect */}
             <style>{`
-              @keyframes nodePopIn {
+              @keyframes docIdlePulse {
+                0%, 100% {
+                  transform: scale(1);
+                  opacity: 0.85;
+                }
+                50% {
+                  transform: scale(1.18);
+                  opacity: 1;
+                }
+              }
+              @keyframes docNodePop {
                 0% {
                   transform: scale(0);
                   opacity: 0;
                 }
-                70% {
-                  transform: scale(1.18);
+                65% {
+                  transform: scale(1.12);
                   opacity: 0.95;
                 }
                 100% {
@@ -1271,21 +1524,19 @@ export default function ObsidianGraphView({
                   opacity: 1;
                 }
               }
-              @keyframes edgeConnect {
-                0% {
-                  opacity: 0;
-                }
-                100% {
-                  opacity: 1;
-                }
+              .doc-node-pulse {
+                animation: docIdlePulse 1.4s ease-in-out infinite;
+                transform-origin: 0 0;
               }
-              .node-pop {
-                animation: nodePopIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
-                transform-box: fill-box;
-                transform-origin: center;
+              .doc-node-entrance {
+                animation: docNodePop 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+                transform-origin: 0 0;
               }
-              .edge-connect {
-                animation: edgeConnect 0.25s ease-out both;
+              .doc-graph-edge {
+                transition: x1 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+                            y1 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+                            x2 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+                            y2 0.55s cubic-bezier(0.22, 1, 0.36, 1);
               }
             `}</style>
 
@@ -1295,15 +1546,24 @@ export default function ObsidianGraphView({
               className="h-full w-full block cursor-grab active:cursor-grabbing select-none"
               onWheel={(e) => {
                 e.preventDefault();
-                const k2 = Math.min(4.0, Math.max(0.15, transform.k * Math.exp(-e.deltaY * 0.0015)));
                 const r = e.currentTarget.getBoundingClientRect();
-                const mx = e.clientX - r.left,
-                  my = e.clientY - r.top;
-                setTransform({
-                  k: k2,
-                  x: mx - ((mx - transform.x) / transform.k) * k2,
-                  y: my - ((my - transform.y) / transform.k) * k2,
-                });
+                const mx = e.clientX - r.left;
+                const my = e.clientY - r.top;
+                if (graphMode === "doc-build") {
+                  const k2 = Math.min(3.5, Math.max(0.3, docTransform.k * Math.exp(-e.deltaY * 0.0015)));
+                  setDocTransform({
+                    k: k2,
+                    x: mx - ((mx - docTransform.x) / docTransform.k) * k2,
+                    y: my - ((my - docTransform.y) / docTransform.k) * k2,
+                  });
+                } else {
+                  const k2 = Math.min(4.0, Math.max(0.10, transform.k * Math.exp(-e.deltaY * 0.0015)));
+                  setTransform({
+                    k: k2,
+                    x: mx - ((mx - transform.x) / transform.k) * k2,
+                    y: my - ((my - transform.y) / transform.k) * k2,
+                  });
+                }
               }}
               onPointerDown={(e) => {
                 if (
@@ -1312,12 +1572,35 @@ export default function ObsidianGraphView({
                   (e.target as Element).closest("button")
                 )
                   return;
-                panRef.current = { sx: e.clientX, sy: e.clientY, ox: transform.x, oy: transform.y };
+                panRef.current = {
+                  sx: e.clientX,
+                  sy: e.clientY,
+                  ox: graphMode === "doc-build" ? docTransform.x : transform.x,
+                  oy: graphMode === "doc-build" ? docTransform.y : transform.y,
+                };
                 e.currentTarget.setPointerCapture(e.pointerId);
               }}
               onPointerMove={(e) => {
                 if (dragRef.current) {
                   const dragId = dragRef.current.id;
+                  if (dragId.startsWith("doc_")) {
+                    const docId = dragId.replace("doc_", "");
+                    if (pointerDownPosRef.current) {
+                      const dx = e.clientX - pointerDownPosRef.current.x;
+                      const dy = e.clientY - pointerDownPosRef.current.y;
+                      if (Math.hypot(dx, dy) > 4) {
+                        didDragNodeRef.current = true;
+                      }
+                    }
+                    if (didDragNodeRef.current) {
+                      const p = toDocWorld(e.clientX, e.clientY, e.currentTarget);
+                      setDraggedDocNodes((prev) => ({
+                        ...prev,
+                        [docId]: { x: p.x, y: p.y },
+                      }));
+                    }
+                    return;
+                  }
                   const n = nodes.find((node) => node.id === dragId);
                   if (n) {
                     if (pointerDownPosRef.current) {
@@ -1342,10 +1625,29 @@ export default function ObsidianGraphView({
                   const { ox, oy, sx, sy } = panRef.current;
                   const nx = ox + (e.clientX - sx);
                   const ny = oy + (e.clientY - sy);
-                  setTransform((t) => ({ ...t, x: nx, y: ny }));
+                  if (graphMode === "doc-build") {
+                    setDocTransform((t) => ({ ...t, x: nx, y: ny }));
+                  } else {
+                    setTransform((t) => ({ ...t, x: nx, y: ny }));
+                  }
                 }
               }}
               onPointerUp={(e) => {
+                if (dragRef.current && dragRef.current.id.startsWith("doc_")) {
+                  const docId = dragRef.current.id.replace("doc_", "");
+                  if (!didDragNodeRef.current) {
+                    focusDocNode(docId);
+                  }
+                  dragRef.current = null;
+                  pointerDownPosRef.current = null;
+                  didDragNodeRef.current = false;
+                  try {
+                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                      e.currentTarget.releasePointerCapture(e.pointerId);
+                    }
+                  } catch {}
+                  return;
+                }
                 if (dragRef.current && !didDragNodeRef.current) {
                   // Mouse released without drag movement -> Definitive click!
                   focusNode(dragRef.current.id);
@@ -1362,6 +1664,23 @@ export default function ObsidianGraphView({
               }}
             >
               <defs>
+                {/* 6.3s Doc Build-Out Directed Arrowhead Marker */}
+                <marker
+                  id="doc-arrow-marker"
+                  viewBox="0 0 10 10"
+                  refX="17"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                >
+                  <path
+                    d="M 0 2 L 7 5 L 0 8"
+                    fill={isDark ? "#71717a" : "#64748b"}
+                    stroke={isDark ? "#71717a" : "#64748b"}
+                    strokeWidth="1.2"
+                  />
+                </marker>
                 {/* Directed Edge Arrowhead (Default Sharp) */}
                 <marker
                   id="obs-arrow-exact"
@@ -1415,7 +1734,142 @@ export default function ObsidianGraphView({
                 </marker>
               </defs>
 
-              <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
+              {graphMode === "doc-build" ? (
+                <g transform={`translate(${docTransform.x},${docTransform.y}) scale(${docTransform.k})`}>
+                  {/* ── 6.3s Doc Build-Out Directed Edges ── */}
+                  {visibleDocEdges.map((e) => {
+                    const p1 = getDocNodePos(e.source);
+                    const p2 = getDocNodePos(e.target);
+                    const isHighlighted = selectedDocId === e.source || selectedDocId === e.target;
+                    return (
+                      <line
+                        key={e.id}
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke={isHighlighted ? (isDark ? "#38bdf8" : "#0284c7") : (isDark ? "#52525b" : "#94a3b8")}
+                        strokeWidth={isHighlighted ? 1.8 : 1.2}
+                        strokeOpacity={isDark ? (isHighlighted ? 0.95 : 0.65) : (isHighlighted ? 0.95 : 0.75)}
+                        className="doc-graph-edge"
+                        markerEnd="url(#doc-arrow-marker)"
+                      />
+                    );
+                  })}
+
+                  {/* ── 6.3s Doc Build-Out Solid Light-Gray Nodes ── */}
+                  {visibleDocNodes.map((n) => {
+                    const pos = getDocNodePos(n.id);
+                    const isRoot = n.id === "index";
+                    const isSelected = selectedDocId === n.id;
+                    const isHovered = hoverDocId === n.id;
+                    const r = isRoot ? 11 : 9; // ~8-10px radius per spec
+
+                    return (
+                      <g
+                        key={n.id}
+                        className="cursor-pointer"
+                        style={{
+                          transform: `translate(${pos.x}px, ${pos.y}px)`,
+                          transition: docPhase === "interactive" && dragRef.current ? "none" : "transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)",
+                        }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          if (docPhase !== "interactive") return;
+                          dragRef.current = { id: `doc_${n.id}` };
+                          didDragNodeRef.current = false;
+                          pointerDownPosRef.current = { id: n.id, x: e.clientX, y: e.clientY, time: Date.now() };
+                          try {
+                            (e.target as Element).setPointerCapture?.(e.pointerId);
+                          } catch {}
+                        }}
+                        onPointerEnter={() => setHoverDocId(n.id)}
+                        onPointerLeave={() => setHoverDocId(null)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          focusDocNode(n.id);
+                        }}
+                      >
+                        {/* Inner group with scale pop-in or idle pulse around local (0, 0) */}
+                        <g className={isRoot && docPhase === "idle" ? "doc-node-pulse" : "doc-node-entrance"}>
+                          {/* Transparent hit area for effortless clicking */}
+                          <circle cx={0} cy={0} r={r + 14} fill="transparent" />
+
+                          {/* Selection or Hover highlight ring */}
+                          {(isSelected || isHovered) && (
+                            <circle
+                              cx={0}
+                              cy={0}
+                              r={r + 6}
+                              fill="none"
+                              stroke={isSelected ? "#e5851d" : isDark ? "#38bdf8" : "#0284c7"}
+                              strokeWidth={1.5}
+                              strokeOpacity={0.85}
+                            />
+                          )}
+
+                          {/* Solid Light-Gray Node Circle (~8–10px radius per spec) */}
+                          <circle
+                            cx={0}
+                            cy={0}
+                            r={r}
+                            fill={
+                              isSelected
+                                ? "#ffffff"
+                                : isHovered
+                                ? isDark ? "#e2e8f0" : "#334155"
+                                : isDark ? "#cbd5e1" : "#475569"
+                            }
+                            stroke={isDark ? "#1e293b" : "#f1f5f9"}
+                            strokeWidth={1.5}
+                          />
+
+                          {/* Label directly below each node in light-gray sans-serif text */}
+                          <g className="pointer-events-none select-none">
+                            <text
+                              x={0}
+                              y={r + 16}
+                              textAnchor="middle"
+                              fill={
+                                isSelected
+                                  ? (isDark ? "#ffffff" : "#0f172a")
+                                  : isHovered
+                                  ? (isDark ? "#38bdf8" : "#0284c7")
+                                  : (isDark ? "#94a3b8" : "#475569")
+                              }
+                              fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+                              fontSize={isRoot ? 12 : 11}
+                              fontWeight={isSelected || isRoot ? 600 : 500}
+                            >
+                              {n.label}
+                            </text>
+                          </g>
+                        </g>
+                      </g>
+                    );
+                  })}
+
+                  {/* Animated Mouse Cursor in 6.0-6.3s window */}
+                  {cursorVisible && (
+                    <g
+                      className="pointer-events-none"
+                      style={{
+                        transform: `translate(${cursorPos.x}px, ${cursorPos.y}px)`,
+                        opacity: cursorOpacity,
+                        transition: "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease",
+                      }}
+                    >
+                      <path
+                        d="M 0 0 L 0 16 L 4.5 12.5 L 8 19.5 L 10.5 18 L 7 11.5 L 12.5 11.5 Z"
+                        fill="#ffffff"
+                        stroke="#08090c"
+                        strokeWidth="1.5"
+                      />
+                    </g>
+                  )}
+                </g>
+              ) : (
+                <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
                 {/* ── Directed Links from API (Progressively Revealed) ── */}
                 {visibleLinks.map((l, idx) => {
                   const s = l.source as SimNode;
@@ -1460,7 +1914,7 @@ export default function ObsidianGraphView({
                       strokeDasharray={isBridge ? "5 3" : undefined}
                       className="edge-connect"
                       markerEnd={
-                        arrows
+                        arrows && (transform.k > 0.55 || isConnectedToSelected || isBridge)
                           ? isConnectedToSelected
                             ? "url(#obs-arrow-selected)"
                             : isBridge
@@ -1493,14 +1947,16 @@ export default function ObsidianGraphView({
                     : 0.15;
                   const circleColor = isSelected ? "#ffffff" : getNodeColor(n);
 
-                  // Smart LOD Label visibility logic: prevents massive mesh of 2,744 text labels
+                  // Root node check for CBI syndicate graph
+                  const isRootInIdle = false;
                   const isInteractive = isSelected || isHovered;
                   const isHighPriority = isNodeHub || Boolean(n.is_broker);
                   const showText =
                     isInteractive ||
                     labelMode === "all" ||
                     (labelMode === "hubs" && isHighPriority) ||
-                    (labelMode === "smart" && (isHighPriority ? transform.k > 0.35 : transform.k > 1.25));
+                    (labelMode === "smart" && (isHighPriority ? transform.k > 0.22 : transform.k > 0.85));
+                  const shouldShowText = isRootInIdle || showText;
 
                   const handleNodePointerDown = (e: React.PointerEvent) => {
                     e.stopPropagation();
@@ -1518,6 +1974,9 @@ export default function ObsidianGraphView({
                       (e.target as Element).releasePointerCapture?.(e.pointerId);
                     } catch {}
                     if (!didDragNodeRef.current) {
+                      if (isTimelinePlaying) {
+                        skipAnimation();
+                      }
                       focusNode(n.id);
                     }
                     dragRef.current = null;
@@ -1527,6 +1986,9 @@ export default function ObsidianGraphView({
 
                   const handleNodeClick = (e: React.MouseEvent) => {
                     e.stopPropagation();
+                    if (isTimelinePlaying) {
+                      skipAnimation();
+                    }
                     focusNode(n.id);
                   };
 
@@ -1538,9 +2000,12 @@ export default function ObsidianGraphView({
                       onPointerLeave={() => setHoverNodeId(null)}
                       onClick={handleNodeClick}
                       onDoubleClick={() => {
+                        if (isTimelinePlaying) {
+                          skipAnimation();
+                        }
                         focusNode(n.id);
                       }}
-                      className="cursor-pointer node-pop"
+                      className={`cursor-pointer ${isRootInIdle ? "node-idle-breathing" : "node-pop"}`}
                       style={{
                         transformOrigin: `${n.x}px ${n.y}px`,
                       }}
@@ -1611,7 +2076,7 @@ export default function ObsidianGraphView({
                       />
 
                       {/* Clean Text Label with backdrop pill & truncation */}
-                      {showText && (() => {
+                      {shouldShowText && (() => {
                         const lbl = n.label || "";
                         const truncated = lbl.length > 22 ? `${lbl.slice(0, 21)}…` : lbl;
                         return (
@@ -1646,7 +2111,8 @@ export default function ObsidianGraphView({
                   );
                 })}
               </g>
-            </svg>
+            )}
+          </svg>
 
             {/* ── On-Screen Zoom Controls HUD (Bottom Left) ── */}
             <div
@@ -1657,7 +2123,13 @@ export default function ObsidianGraphView({
               }`}
             >
               <button
-                onClick={() => setTransform((t) => ({ ...t, k: Math.min(4.0, t.k * 1.25) }))}
+                onClick={() => {
+                  if (graphMode === "doc-build") {
+                    setDocTransform((t) => ({ ...t, k: Math.min(3.5, t.k * 1.25) }));
+                  } else {
+                    setTransform((t) => ({ ...t, k: Math.min(4.0, t.k * 1.25) }));
+                  }
+                }}
                 title="Zoom In"
                 className={`flex size-7 items-center justify-center rounded transition-colors ${
                   isDark ? "hover:bg-[#25252e] hover:text-white text-[#d4d4d8]" : "hover:bg-[#f4efe4] hover:text-[#1c1d22] text-[#4a4b52]"
@@ -1666,7 +2138,13 @@ export default function ObsidianGraphView({
                 <ZoomIn className="size-4" />
               </button>
               <button
-                onClick={() => setTransform((t) => ({ ...t, k: Math.max(0.15, t.k / 1.25) }))}
+                onClick={() => {
+                  if (graphMode === "doc-build") {
+                    setDocTransform((t) => ({ ...t, k: Math.max(0.3, t.k / 1.25) }));
+                  } else {
+                    setTransform((t) => ({ ...t, k: Math.max(0.10, t.k / 1.25) }));
+                  }
+                }}
                 title="Zoom Out"
                 className={`flex size-7 items-center justify-center rounded transition-colors ${
                   isDark ? "hover:bg-[#25252e] hover:text-white text-[#d4d4d8]" : "hover:bg-[#f4efe4] hover:text-[#1c1d22] text-[#4a4b52]"
@@ -1676,23 +2154,35 @@ export default function ObsidianGraphView({
               </button>
               <div className={`h-4 w-px ${isDark ? "bg-[#26262e]" : "bg-[#e8e4da]"}`} />
               <button
-                onClick={fitView}
-                title="Fit Graph to Screen (Default 40%)"
+                onClick={() => {
+                  if (graphMode === "doc-build") {
+                    setDocTransform({ x: 0, y: 0, k: 1.0 });
+                  } else {
+                    fitView();
+                  }
+                }}
+                title={graphMode === "doc-build" ? "Reset to 100% Zoom" : "Fit Graph to Screen (Default 28% [25-30% range])"}
                 className={`flex items-center gap-1 rounded px-2 py-1 font-semibold transition-colors ${
                   isDark ? "hover:bg-[#25252e] hover:text-white text-[#d4d4d8]" : "hover:bg-[#f4efe4] hover:text-[#1c1d22] text-[#1c1d22]"
                 }`}
               >
                 <Maximize2 className="size-3.5" />
-                <span>Fit 40%</span>
+                <span>{graphMode === "doc-build" ? "Fit 100%" : "Fit 28%"}</span>
               </button>
               <button
-                onClick={fitView}
-                title="Reset to Default 40% Zoom"
+                onClick={() => {
+                  if (graphMode === "doc-build") {
+                    setDocTransform({ x: 0, y: 0, k: 1.0 });
+                  } else {
+                    fitView();
+                  }
+                }}
+                title={graphMode === "doc-build" ? "Reset to 100% Zoom" : "Reset to Default 28% Zoom"}
                 className={`rounded px-2 py-1 font-mono text-[11px] transition-colors ${
                   isDark ? "text-[#8c8c96] hover:bg-[#25252e] hover:text-white" : "text-[#7a7b83] hover:bg-[#f4efe4] hover:text-[#1c1d22]"
                 }`}
               >
-                {Math.round(transform.k * 100)}%
+                {Math.round((graphMode === "doc-build" ? docTransform.k : transform.k) * 100)}%
               </button>
               <div className={`h-4 w-px ${isDark ? "bg-zinc-800" : "bg-[#e8e4da]"}`} />
               {/* Label Density Mode Selector */}
@@ -1719,47 +2209,56 @@ export default function ObsidianGraphView({
                 ))}
               </div>
 
-              {/* Timeline Progressive Node Addition Control */}
+              {/* 6.3s Cinematic Sequence Controller in Bottom HUD */}
               <div className={`h-4 w-px ${isDark ? "bg-[#26262e]" : "bg-[#e8e4da]"}`} />
-              {isTimelinePlaying && revealedCount < nodes.length ? (
-                <div className="flex items-center gap-1.5 px-1.5 py-0.5">
-                  <span className="relative flex size-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                    <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
-                  </span>
-                  <span className={`text-[11px] font-mono font-bold ${isDark ? "text-amber-400" : "text-amber-700"}`}>
-                    {revealedCount}/{nodes.length}
-                  </span>
+              {graphMode === "doc-build" ? (
+                isPlaying6s ? (
+                  <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                    <span className="relative flex size-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                      <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                    </span>
+                    <span className={`text-[11px] font-mono font-bold ${isDark ? "text-amber-400" : "text-amber-700"}`}>
+                      {docPhase === "idle" ? "0.0s Idle" : `Step ${docStep}/8`}
+                    </span>
+                    <button
+                      onClick={skipDocAnimation}
+                      title="Skip sequence to fully interactive view"
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
+                        isDark
+                          ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                          : "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                      }`}
+                    >
+                      Skip
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    onClick={() => {
-                      setRevealedCount(nodes.length);
-                      setIsTimelinePlaying(false);
-                    }}
-                    title="Skip timeline animation and load all nodes"
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
+                    onClick={replayDocAnimation}
+                    title="Replay 6.3-Second Build-Out Sequence"
+                    className={`flex items-center gap-1.5 rounded px-2 py-1 font-semibold text-[11px] transition-colors ${
                       isDark
-                        ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
-                        : "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                        ? "hover:bg-[#25252e] hover:text-amber-400 text-[#8c8c96]"
+                        : "hover:bg-[#f4efe4] hover:text-amber-700 text-[#7a7b83]"
                     }`}
                   >
-                    Skip
+                    <Play className="size-3 text-amber-500 fill-amber-500" />
+                    <span>Replay 6.3s Build-Out</span>
                   </button>
-                </div>
+                )
               ) : (
                 <button
-                  onClick={() => {
-                    setRevealedCount(Math.min(45, nodes.length));
-                    setIsTimelinePlaying(true);
-                  }}
-                  title="Replay Timeline Node Addition"
+                  onClick={() => fitView()}
+                  title="Fit Syndicate Network"
                   className={`flex items-center gap-1.5 rounded px-2 py-1 font-semibold text-[11px] transition-colors ${
                     isDark
-                      ? "hover:bg-[#25252e] hover:text-amber-400 text-[#8c8c96]"
-                      : "hover:bg-[#f4efe4] hover:text-amber-700 text-[#7a7b83]"
+                      ? "hover:bg-[#25252e] hover:text-purple-400 text-[#8c8c96]"
+                      : "hover:bg-[#f4efe4] hover:text-purple-700 text-[#7a7b83]"
                   }`}
                 >
-                  <Play className="size-3 text-amber-500 fill-amber-500" />
-                  <span>Replay Timeline</span>
+                  <Network className="size-3 text-purple-500" />
+                  <span>Fit Syndicate</span>
                 </button>
               )}
             </div>
@@ -1857,7 +2356,112 @@ export default function ObsidianGraphView({
                 {/* ── MODE 1: NODE / CASE DOSSIER DETAILS ── */}
                 {rightHudMode === "details" && (
                   <div className="space-y-4">
-                    {selectedNode ? (
+                    {selectedDocId && DOC_MARKDOWN_CONTENT[selectedDocId] && graphMode === "doc-build" ? (() => {
+                      const docMeta = DOC_NODES.find((d) => d.id === selectedDocId);
+                      const docData = DOC_MARKDOWN_CONTENT[selectedDocId];
+                      return (
+                        <div className="space-y-4">
+                          {/* Title & Badge Header */}
+                          <div className={`border-b pb-3 ${isDark ? "border-[#23232a]" : "border-[#ede9df]"}`}>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-black bg-amber-400 shadow-sm">
+                                {docMeta?.category || "DOC"} NOTE
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono text-[11px] text-[#71717a]">
+                                  {docMeta?.filename}
+                                </span>
+                                <button
+                                  onClick={() => copyNodeId(docMeta?.filename || "")}
+                                  title="Copy filename"
+                                  className="p-1 text-[#71717a] hover:text-white"
+                                >
+                                  {copiedId ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                                </button>
+                              </div>
+                            </div>
+
+                            <h3 className={`text-base font-bold leading-snug ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
+                              {docData.title}
+                            </h3>
+                            <p className={`mt-1 text-xs font-medium ${isDark ? "text-[#a1a1aa]" : "text-[#65666e]"}`}>
+                              {docData.subtitle}
+                            </p>
+
+                            {/* Tags */}
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {docData.tags.map((t) => (
+                                <span
+                                  key={t}
+                                  className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold ${
+                                    isDark
+                                      ? "border-zinc-800 bg-zinc-900 text-amber-400/90"
+                                      : "border-[#e8e4da] bg-amber-50 text-amber-800"
+                                  }`}
+                                >
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Formatted Markdown Content Card */}
+                          <div
+                            className={`rounded-xl border p-4 font-mono text-xs leading-relaxed max-h-[380px] overflow-y-auto whitespace-pre-wrap ${
+                              isDark
+                                ? "border-zinc-800/80 bg-zinc-950/70 text-zinc-300"
+                                : "border-[#e8e4da] bg-white text-zinc-800 shadow-inner"
+                            }`}
+                          >
+                            {docData.content}
+                          </div>
+
+                          {/* Graph Relationships / WikiLinks */}
+                          <div className={`border-t pt-3 ${isDark ? "border-[#23232a]" : "border-[#ede9df]"}`}>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              Note Graph Connections
+                            </span>
+                            <div className="mt-2 space-y-2">
+                              {docMeta?.parentId && (
+                                <div
+                                  className={`flex items-center justify-between p-2 rounded-lg border ${
+                                    isDark ? "bg-[#181820] border-[#26262e]" : "bg-[#f9f8f4] border-[#eeeae0]"
+                                  }`}
+                                >
+                                  <span className="text-xs text-zinc-400">Parent Note:</span>
+                                  <button
+                                    onClick={() => focusDocNode(docMeta.parentId!)}
+                                    className="font-mono text-xs font-bold text-amber-500 hover:underline cursor-pointer"
+                                  >
+                                    [[{docMeta.parentId}]]
+                                  </button>
+                                </div>
+                              )}
+                              {DOC_NODES.filter((d) => d.parentId === selectedDocId).length > 0 && (
+                                <div
+                                  className={`p-2 rounded-lg border space-y-1.5 ${
+                                    isDark ? "bg-[#181820] border-[#26262e]" : "bg-[#f9f8f4] border-[#eeeae0]"
+                                  }`}
+                                >
+                                  <span className="text-xs text-zinc-400">Child Notes:</span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {DOC_NODES.filter((d) => d.parentId === selectedDocId).map((ch) => (
+                                      <button
+                                        key={ch.id}
+                                        onClick={() => focusDocNode(ch.id)}
+                                        className="font-mono text-[11px] px-2 py-0.5 rounded bg-zinc-800/80 text-sky-400 hover:bg-zinc-700 cursor-pointer"
+                                      >
+                                        [[{ch.id}]]
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })() : selectedNode ? (
                       <div>
                         {/* Title & Badge Header */}
                         <div className="border-b border-[#23232a] pb-3">
