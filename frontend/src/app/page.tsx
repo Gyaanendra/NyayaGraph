@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
-import { CYBERLIFE_DATA, FlowNode, FlowChapter } from '@/data/cyberlifeData';
+import React, { useState, useRef, useEffect } from 'react';
+import { CYBERLIFE_DATA, FlowNode, FlowChapter, LegendItem } from '@/data/cyberlifeData';
+import { fetchFlowchartChapters } from '@/lib/api';
 import { Header } from '@/components/Header';
 import { BlueprintOverlay } from '@/components/BlueprintOverlay';
 import { CharactersView } from '@/components/CharactersView';
@@ -18,6 +19,33 @@ export default function Home() {
   const [charIdx, setCharIdx] = useState<number>(0);
   const [loreIdx, setLoreIdx] = useState<number>(0);
   const lastWheelTimeRef = useRef<number>(0);
+
+  // ── Live flowchart data from the database ──────────────────────────────────
+  const [dbChapters, setDbChapters] = useState<FlowChapter[] | null>(null);
+  const [dbLegend, setDbLegend]     = useState<LegendItem[]>(CYBERLIFE_DATA.flowcharts.legend);
+  const [chaptersLoading, setChaptersLoading] = useState<boolean>(false);
+  const [chaptersError, setChaptersError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    if (currentView !== 'flowchart') return;
+    if (dbChapters !== null) return; // already loaded
+    setChaptersLoading(true);
+    setChaptersError(null);
+    fetchFlowchartChapters()
+      .then(data => {
+        if (data && data.chapters?.length) {
+          setDbChapters(data.chapters as FlowChapter[]);
+          if (data.legend?.length) setDbLegend(data.legend as LegendItem[]);
+        } else {
+          setChaptersError('No cases in database. Ingest a FIR PDF to populate the flowchart.');
+        }
+      })
+      .catch(() => setChaptersError('Backend unreachable. Start the FastAPI server.'))
+      .finally(() => setChaptersLoading(false));
+  }, [currentView, dbChapters]);
+
+  // Active chapters: live DB data if available, else static fallback
+  const activeChapters = dbChapters ?? CYBERLIFE_DATA.flowcharts.chapters;
 
   // Modals state
   const [panoramaState, setPanoramaState] = useState<{
@@ -162,11 +190,49 @@ export default function Home() {
             )}
 
             {currentView === 'flowchart' && (
-              <FlowchartView
-                chapters={CYBERLIFE_DATA.flowcharts.chapters}
-                onSelectNode={(node, chapter) => setInspectNode({ node, chapter })}
-                onOpenLegend={() => setLegendOpen(true)}
-              />
+              chaptersLoading ? (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', height: '60vh', gap: '16px',
+                  color: '#00b4d8', fontFamily: 'monospace'
+                }}>
+                  <div style={{
+                    width: 48, height: 48, border: '3px solid #00b4d8',
+                    borderTopColor: 'transparent', borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite'
+                  }} />
+                  <span style={{ fontSize: 13, letterSpacing: 2, opacity: 0.8 }}>
+                    LOADING CASE DATABASE…
+                  </span>
+                </div>
+              ) : chaptersError ? (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', height: '60vh', gap: '12px',
+                  color: '#e63946', fontFamily: 'monospace', textAlign: 'center', padding: '0 40px'
+                }}>
+                  <span style={{ fontSize: 22 }}>⚠</span>
+                  <span style={{ fontSize: 13, letterSpacing: 1, maxWidth: 520, lineHeight: 1.6 }}>
+                    {chaptersError}
+                  </span>
+                  <button
+                    onClick={() => { setDbChapters(null); setChaptersError(null); }}
+                    style={{
+                      marginTop: 8, padding: '6px 20px', background: 'transparent',
+                      border: '1px solid #e63946', color: '#e63946',
+                      cursor: 'pointer', fontFamily: 'monospace', fontSize: 11, letterSpacing: 1
+                    }}
+                  >
+                    RETRY
+                  </button>
+                </div>
+              ) : (
+                <FlowchartView
+                  chapters={activeChapters}
+                  onSelectNode={(node, chapter) => setInspectNode({ node, chapter })}
+                  onOpenLegend={() => setLegendOpen(true)}
+                />
+              )
             )}
           </main>
 
@@ -212,7 +278,7 @@ export default function Home() {
       <LegendModal
         isOpen={legendOpen}
         onClose={() => setLegendOpen(false)}
-        legend={CYBERLIFE_DATA.flowcharts.legend}
+        legend={dbLegend}
       />
     </div>
   );

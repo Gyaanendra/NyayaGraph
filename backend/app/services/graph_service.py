@@ -1,6 +1,6 @@
 import networkx as nx
 import community as community_louvain
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from ..models.schemas import (
     ExtractedEntity, FactItem, GraphNode, GraphEdge, 
     ConnectedCaseGraph, DetroitNodeType, EntityCategory, VerificationStatus
@@ -47,7 +47,9 @@ class GraphService:
             G.add_node(e.id)
 
         # 2. Add structural entity-to-entity / entity-to-evidence links from FIR
-        # Link suspects to their phones, IMEIs, vehicles, accounts
+        edge_counter = len(all_edges) + 1
+
+        # Fallback preset links for sample Noida case
         fir_links = [
             ("PER_001", "PHONE_9871234567", "Operated Calling SIM", "FIR Fard Seizure"),
             ("PER_001", "PHONE_9871234568", "Secondary SIM", "FIR Seizure"),
@@ -61,8 +63,6 @@ class GraphService:
             ("PER_VICTIM_01", "PHONE_9810123456", "Complainant Line", "FIR Complaint"),
             ("PER_003", "LEAD_LOCKED_01", "Associated Storage Location", "Pending Lead"),
         ]
-
-        edge_counter = len(all_edges) + 1
         for src, tgt, lbl, ref in fir_links:
             if src in nodes_dict and tgt in nodes_dict:
                 all_edges.append(GraphEdge(
@@ -74,6 +74,105 @@ class GraphService:
                     source_type="FIR",
                     evidence_ref=ref,
                     is_suspicious=False
+                ))
+                edge_counter += 1
+
+        # Dynamic Edge Synthesis for CBI / Scanned FIR Cases
+        corporate_nodes = [n for n in nodes_dict.values() if "corporate" in (n.sublabel or "").lower() or "ltd" in n.label.lower()]
+        person_nodes = [n for n in nodes_dict.values() if n.category == EntityCategory.PERSON and not n.is_broker]
+        bank_nodes = [n for n in nodes_dict.values() if n.category == EntityCategory.BANK_ACCOUNT]
+        location_nodes = [n for n in nodes_dict.values() if n.category == EntityCategory.LOCATION]
+        sec_nodes = [n for n in nodes_dict.values() if n.category == EntityCategory.LEGAL_SECTION]
+
+        # Identify prime broker / accused 2
+        prime_broker = next((n for n in nodes_dict.values() if "accused no. 2" in (n.sublabel or "").lower() or "promoter" in (n.sublabel or "").lower() or n.is_broker), None)
+        if not prime_broker and person_nodes:
+            prime_broker = person_nodes[0]
+
+        # Connect corporate shell to prime broker
+        if corporate_nodes and prime_broker:
+            c_node = corporate_nodes[0]
+            all_edges.append(GraphEdge(
+                id=f"EDGE_CBI_{edge_counter:03d}",
+                source=c_node.id,
+                target=prime_broker.id,
+                label="MANAGING DIRECTOR & PROMOTER (CONTROL)",
+                weight=5.0,
+                source_type="FIR",
+                evidence_ref="CBI FIR Regd Details",
+                is_suspicious=True
+            ))
+            edge_counter += 1
+
+            # Connect other directors to prime broker / company
+            for p in person_nodes:
+                if p.id != prime_broker.id:
+                    all_edges.append(GraphEdge(
+                        id=f"EDGE_CBI_{edge_counter:03d}",
+                        source=prime_broker.id,
+                        target=p.id,
+                        label="CO-CONSPIRATOR / AUTHORISED SIGNATORY",
+                        weight=3.5,
+                        source_type="FIR",
+                        evidence_ref="Board Resolution",
+                        is_suspicious=True
+                    ))
+                    edge_counter += 1
+
+            # Connect lending banks to company
+            for b in bank_nodes:
+                all_edges.append(GraphEdge(
+                    id=f"EDGE_CBI_{edge_counter:03d}",
+                    source=b.id,
+                    target=c_node.id,
+                    label="DISBURSED CONSORTIUM CREDIT FACILITY",
+                    weight=4.0,
+                    source_type="BANK",
+                    evidence_ref="Sanction Letter",
+                    is_suspicious=False
+                ))
+                edge_counter += 1
+
+            # Connect company to locations (registered office, mill)
+            for loc in location_nodes:
+                if loc.id != "LEAD_LOCKED_01":
+                    all_edges.append(GraphEdge(
+                        id=f"EDGE_CBI_{edge_counter:03d}",
+                        source=c_node.id,
+                        target=loc.id,
+                        label="REGISTERED FACILITY / ASSET",
+                        weight=2.5,
+                        source_type="FIR",
+                        evidence_ref="MCA / Inspection",
+                        is_suspicious=False
+                    ))
+                    edge_counter += 1
+
+            # Connect broker to legal sections
+            for sec in sec_nodes[:3]:
+                all_edges.append(GraphEdge(
+                    id=f"EDGE_CBI_{edge_counter:03d}",
+                    source=prime_broker.id,
+                    target=sec.id,
+                    label="CHARGED UNDER STATUTE",
+                    weight=3.0,
+                    source_type="FIR",
+                    evidence_ref="Court Chargesheet",
+                    is_suspicious=False
+                ))
+                edge_counter += 1
+
+            # Connect broker to cross-case locked hawala vault
+            if "LEAD_LOCKED_01" in nodes_dict:
+                all_edges.append(GraphEdge(
+                    id=f"EDGE_CBI_{edge_counter:03d}",
+                    source=prime_broker.id,
+                    target="LEAD_LOCKED_01",
+                    label="CASH LIQUIDATION TRAIL (CROSS-CASE LINK)",
+                    weight=4.8,
+                    source_type="CROSS_CASE",
+                    evidence_ref="Intelligence Dissemination",
+                    is_suspicious=True
                 ))
                 edge_counter += 1
 
@@ -173,3 +272,102 @@ class GraphService:
                 node.y = start_y + (row_idx * y_step)
 
         return nodes
+
+    def aggregate_all_cases_graph(
+        self, graphs: List[ConnectedCaseGraph]
+    ) -> Tuple[List[GraphNode], List[GraphEdge], Dict[str, List[str]], Dict[str, Any]]:
+        """Merge per-case graphs; shared phones/IMEIs/UPIs/vehicles/names become
+        implicit bridges, plus explicit CROSS_CASE hub-to-hub bridge edges."""
+        import re as _re
+
+        def _norm(n: GraphNode) -> Optional[str]:
+            if n.category == EntityCategory.PHONE:
+                d = _re.sub(r"\D", "", n.label)
+                return f"phone:{d[-10:]}" if len(d) >= 10 else None
+            if n.category == EntityCategory.IMEI:
+                d = _re.sub(r"\D", "", n.label)
+                return f"imei:{d}" if d else None
+            if n.category == EntityCategory.UPI_ID:
+                return f"upi:{n.label.strip().lower()}"
+            if n.category == EntityCategory.VEHICLE:
+                return f"veh:{_re.sub(r'[^A-Z0-9]', '', n.label.upper())}"
+            if n.category == EntityCategory.PERSON:
+                return f"person:{n.label.strip().lower()}"
+            return None
+
+        merged_nodes: Dict[str, GraphNode] = {}
+        merged_edges: List[GraphEdge] = []
+        key_to_cases: Dict[str, List[str]] = {}
+        seen_edge_keys = set()
+
+        for g in graphs:
+            for n in g.nodes:
+                if n.id not in merged_nodes:
+                    copy = n.model_copy(deep=True)
+                    copy.details = dict(copy.details or {})
+                    copy.details["source_cases"] = [g.case_id]
+                    merged_nodes[n.id] = copy
+                else:
+                    cases = merged_nodes[n.id].details.setdefault("source_cases", [])
+                    if g.case_id not in cases:
+                        cases.append(g.case_id)
+                k = _norm(n)
+                if k:
+                    lst = key_to_cases.setdefault(k, [])
+                    if g.case_id not in lst:
+                        lst.append(g.case_id)
+            for e in g.edges:
+                ek = (e.source, e.target, e.label, e.source_type)
+                if ek not in seen_edge_keys:
+                    seen_edge_keys.add(ek)
+                    merged_edges.append(e)
+
+        shared = {k: v for k, v in key_to_cases.items() if len(v) >= 2}
+
+        # Explicit hub-to-hub bridge edges weighted by shared-identifier overlap.
+        bridge_edges: List[GraphEdge] = []
+        case_ids = [g.case_id for g in graphs]
+        for i in range(len(case_ids)):
+            for j in range(i + 1, len(case_ids)):
+                a, b = case_ids[i], case_ids[j]
+                overlap = sorted(k for k, v in shared.items() if a in v and b in v)
+                if overlap:
+                    eid = f"EDGE_XCASE_{a[-6:]}_{b[-6:]}"
+                    edge = GraphEdge(
+                        id=eid,
+                        source=f"HUB_{a}",
+                        target=f"HUB_{b}",
+                        label=f"{len(overlap)} shared identifiers",
+                        weight=min(5.0, 1.0 + len(overlap)),
+                        source_type="CROSS_CASE",
+                        evidence_ref="; ".join(overlap[:6]),
+                        is_suspicious=True,
+                    )
+                    bridge_edges.append(edge)
+        merged_edges.extend(bridge_edges)
+
+        # Case hub anchor nodes so the syndicate view has per-case anchors.
+        for idx, g in enumerate(graphs):
+            hid = f"HUB_{g.case_id}"
+            if hid not in merged_nodes:
+                merged_nodes[hid] = GraphNode(
+                    id=hid,
+                    label=g.fir_number,
+                    category=EntityCategory.EVIDENCE,
+                    sublabel=g.police_station,
+                    node_type=DetroitNodeType.ANCHOR,
+                    community_id=900 + idx,
+                    x=120.0 + idx * 420.0,
+                    y=40.0,
+                    details={"case_id": g.case_id, "is_case_hub": True},
+                )
+
+        nodes = list(merged_nodes.values())
+        stats = {
+            "total_cases": len(graphs),
+            "total_nodes": len(nodes),
+            "total_edges": len(merged_edges),
+            "bridge_edge_count": len(bridge_edges),
+            "shared_identifier_count": len(shared),
+        }
+        return nodes, merged_edges, shared, stats

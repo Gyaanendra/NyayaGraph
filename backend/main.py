@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import router as cases_router
+from app.api.endpoints import router as cases_router, blockchain_router, flowchart_router
 
 app = FastAPI(
     title="NyayaGraph-GN API",
@@ -17,6 +17,8 @@ app.add_middleware(
 )
 
 app.include_router(cases_router)
+app.include_router(blockchain_router)
+app.include_router(flowchart_router)
 
 @app.get("/")
 def read_root():
@@ -29,6 +31,12 @@ def read_root():
         "endpoints": {
             "sample_analysis": "/api/v1/cases/sample",
             "process_custom_case": "/api/v1/cases/process",
+            "ingest_files": "/api/v1/cases/ingest-files",
+            "list_cases": "/api/v1/cases/",
+            "aggregate_graph": "/api/v1/cases/all/aggregate-graph",
+            "verify_evidence": "/api/v1/blockchain/verify/{hash_or_tx}",
+            "ledger": "/api/v1/blockchain/ledger",
+            "flowchart_chapters": "/api/v1/flowchart/chapters",
             "health": "/api/v1/health"
         }
     }
@@ -40,3 +48,4 @@ def health_check():
         "engine": "FastAPI + NetworkX + Louvain + Pydantic",
         "bsa_section": "BSA 2023 Section 63(4) Evidence Ledger Ready",
     }
+
