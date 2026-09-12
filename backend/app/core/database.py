@@ -11,8 +11,15 @@ def get_root_data_dir() -> str:
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
 
+def get_knowledge_base_dir() -> str:
+    """Returns absolute path to root NyayaGraph/data/knowledge_base directory."""
+    kb_dir = os.path.join(get_root_data_dir(), "knowledge_base")
+    os.makedirs(kb_dir, exist_ok=True)
+    return kb_dir
+
 def get_db_path() -> str:
-    return os.environ.get("NYAYAGRAPH_DB_PATH", os.path.join(get_root_data_dir(), "nyayagraph.db"))
+    return os.environ.get("NYAYAGRAPH_DB_PATH", os.path.join(get_knowledge_base_dir(), "nyayagraph.db"))
+
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(get_db_path())

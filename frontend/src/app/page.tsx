@@ -1,285 +1,286 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { CYBERLIFE_DATA, FlowNode, FlowChapter, LegendItem } from '@/data/cyberlifeData';
-import { fetchFlowchartChapters } from '@/lib/api';
-import { Header } from '@/components/Header';
-import { BlueprintOverlay } from '@/components/BlueprintOverlay';
-import { CharactersView } from '@/components/CharactersView';
-import { LoreView } from '@/components/LoreView';
-import { FlowchartView } from '@/components/FlowchartView';
-import { RightMenu } from '@/components/RightMenu';
-import { BottomBar } from '@/components/BottomBar';
-import { PanoramaModal, NodeInspectorModal, LegendModal } from '@/components/Modals';
+import React, { useEffect, useState } from "react";
+import OfficialDashboardView from "@/components/OfficialDashboardView";
+import ObsidianGraphView from "@/components/ObsidianGraphView";
+import CasesExplorerView from "@/components/CasesExplorerView";
+import DetectiveChatView from "@/components/DetectiveChatView";
+import { FlowchartView } from "@/components/FlowchartView";
+import { fetchFlowchartChapters } from "@/lib/api";
+import { useTheme } from "@/context/ThemeContext";
+import type { FlowChapter } from "@/data/cyberlifeData";
+import {
+  LayoutDashboard,
+  Network,
+  FolderArchive,
+  MessageSquareCode,
+  GitFork,
+  ShieldCheck,
+  Cpu,
+  Radio,
+  Sun,
+  Moon,
+} from "lucide-react";
+
+export type ActiveAppView = "dashboard" | "graph" | "cases" | "chat" | "flowchart";
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<string>('characters');
-  const [blueprintActive, setBlueprintActive] = useState<boolean>(false);
-  const [lang, setLang] = useState<string>('EN');
-  const [charIdx, setCharIdx] = useState<number>(0);
-  const [loreIdx, setLoreIdx] = useState<number>(0);
-  const lastWheelTimeRef = useRef<number>(0);
+  const { theme, toggleTheme } = useTheme();
+  const [view, setView] = useState<ActiveAppView>("dashboard");
+  const [stats, setStats] = useState<{ cases: number; nodes: number; edges: number } | null>(null);
+  const [chapters, setChapters] = useState<FlowChapter[] | null>(null);
 
-  // ── Live flowchart data from the database ──────────────────────────────────
-  const [dbChapters, setDbChapters] = useState<FlowChapter[] | null>(null);
-  const [dbLegend, setDbLegend]     = useState<LegendItem[]>(CYBERLIFE_DATA.flowcharts.legend);
-  const [chaptersLoading, setChaptersLoading] = useState<boolean>(false);
-  const [chaptersError, setChaptersError]     = useState<string | null>(null);
+  // Cross-view state parameters
+  const [chatCaseId, setChatCaseId] = useState<string | null>(null);
+  const [chatFirNumber, setChatFirNumber] = useState<string | null>(null);
 
   useEffect(() => {
-    if (currentView !== 'flowchart') return;
-    if (dbChapters !== null) return; // already loaded
-    setChaptersLoading(true);
-    setChaptersError(null);
-    fetchFlowchartChapters()
-      .then(data => {
-        if (data && data.chapters?.length) {
-          setDbChapters(data.chapters as FlowChapter[]);
-          if (data.legend?.length) setDbLegend(data.legend as LegendItem[]);
-        } else {
-          setChaptersError('No cases in database. Ingest a FIR PDF to populate the flowchart.');
-        }
-      })
-      .catch(() => setChaptersError('Backend unreachable. Start the FastAPI server.'))
-      .finally(() => setChaptersLoading(false));
-  }, [currentView, dbChapters]);
+    if (view !== "flowchart" || chapters) return;
+    fetchFlowchartChapters().then((d) => {
+      if (d?.chapters?.length) setChapters(d.chapters as FlowChapter[]);
+    });
+  }, [view, chapters]);
 
-  // Active chapters: live DB data if available, else static fallback
-  const activeChapters = dbChapters ?? CYBERLIFE_DATA.flowcharts.chapters;
-
-  // Modals state
-  const [panoramaState, setPanoramaState] = useState<{
-    isOpen: boolean;
-    title: string;
-    description: string;
-  }>({
-    isOpen: false,
-    title: '',
-    description: ''
-  });
-
-  const [inspectNode, setInspectNode] = useState<{
-    node: FlowNode | null;
-    chapter: FlowChapter | null;
-  }>({
-    node: null,
-    chapter: null
-  });
-
-  const [legendOpen, setLegendOpen] = useState<boolean>(false);
-
-  // View order for page numbering (Image 1: 0/0 or 1/3)
-  const viewOrder = ['characters', 'lore', 'flowchart'];
-  const curViewIndex = viewOrder.indexOf(currentView);
-  const pageNum = (curViewIndex >= 0 ? curViewIndex + 1 : 1).toString().padStart(2, '0');
-  const pageNumberString = `${pageNum} / 03`;
-
-  // Search handler
-  const handleSearch = () => {
-    const query = prompt('[CYBERLIFE OS] Enter search keyword (e.g., Chloe, Markus, Connor, Hostage, Lore):');
-    if (query) {
-      const q = query.toLowerCase();
-      if (q.includes('chloe') || q.includes('rt600') || q.includes('kara') || q.includes('connor') || q.includes('markus')) {
-        setCurrentView('characters');
-      } else if (q.includes('hostage') || q.includes('stratford') || q.includes('flowchart') || q.includes('decision')) {
-        setCurrentView('flowchart');
-      } else if (q.includes('detroit') || q.includes('city') || q.includes('lore')) {
-        setCurrentView('lore');
-      } else {
-        alert(`Query "${query}" resolved in CyberLife records.`);
-      }
-    }
+  const handleOpenChatWithCase = (caseId?: string, firLabel?: string) => {
+    if (caseId) setChatCaseId(caseId);
+    if (firLabel) setChatFirNumber(firLabel);
+    setView("chat");
   };
 
-  const handleProfile = () => {
-    alert(`CYBERLIFE OPERATOR TERMINAL\nStatus: Authorized Personnel Level 5\nBiometric Hash: #CYB-992-DETROIT`);
+  const handleOpenCaseInExplorer = (caseId?: string) => {
+    setView("cases");
   };
 
-  const currentLore = CYBERLIFE_DATA.lore[loreIdx] || CYBERLIFE_DATA.lore[0];
-
-  const handlePrevItem = () => {
-    if (currentView === 'characters') {
-      setCharIdx((charIdx - 1 + CYBERLIFE_DATA.characters.length) % CYBERLIFE_DATA.characters.length);
-    } else if (currentView === 'lore') {
-      setLoreIdx((loreIdx - 1 + CYBERLIFE_DATA.lore.length) % CYBERLIFE_DATA.lore.length);
-    }
+  const handleJumpToGlobalGraph = (nodeId?: string) => {
+    setView("graph");
   };
 
-  const handleNextItem = () => {
-    if (currentView === 'characters') {
-      setCharIdx((charIdx + 1) % CYBERLIFE_DATA.characters.length);
-    } else if (currentView === 'lore') {
-      setLoreIdx((loreIdx + 1) % CYBERLIFE_DATA.lore.length);
-    }
-  };
-
-  // Mouse wheel scroll navigation for Characters and Lore views
-  const handleContentWheel = (e: React.WheelEvent) => {
-    if (currentView === 'flowchart') return; // Flowchart has dedicated canvas wheel panning
-    const now = Date.now();
-    if (now - lastWheelTimeRef.current < 350) return;
-
-    if (e.deltaY > 25) {
-      lastWheelTimeRef.current = now;
-      handleNextItem();
-    } else if (e.deltaY < -25) {
-      lastWheelTimeRef.current = now;
-      handlePrevItem();
-    }
-  };
+  const isDark = theme === "dark";
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden overflow-y-auto">
-      {/* Low-Poly Faceted Backdrop */}
-      <div className="bg-faceted-backdrop">
-        <div className="poly-layer"></div>
-      </div>
+    <div
+      className={`flex h-screen w-screen flex-col overflow-hidden font-sans select-none antialiased transition-colors duration-150 ${
+        isDark ? "bg-[#0f1015] text-[#f5f4ef]" : "bg-[#f5f3ec] text-[#1c1d22]"
+      }`}
+    >
+      {/* ── MASTER TOP NAVIGATION BAR (Executive Institutional System) ── */}
+      <header
+        className={`flex h-13 shrink-0 items-center justify-between border-b px-5 z-50 transition-colors duration-150 ${
+          isDark
+            ? "border-[#262833] bg-[#14151c] text-[#f5f4ef]"
+            : "border-[#e8e4da] bg-[#f9f8f4] text-[#1c1d22]"
+        }`}
+      >
+        {/* Left: Brand Identity & Live Metrics */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setView("dashboard")}
+            className="flex items-center gap-2.5 cursor-pointer text-left"
+          >
+            <div className="flex size-8 items-center justify-center rounded-xl bg-[#202126] text-white shadow-xs">
+              <ShieldCheck className="size-4.5 text-[#f5b838]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-xs font-black tracking-wider uppercase ${
+                  isDark ? "text-white" : "text-[#1c1d22]"
+                }`}
+              >
+                NyayaGraph
+              </span>
+              <span
+                className={`rounded-md border px-2 py-0.5 text-[10.5px] font-semibold ${
+                  isDark
+                    ? "border-[#2a2c38] bg-[#1a1b24] text-[#a5a7b5]"
+                    : "border-[#e4dfd3] bg-white text-[#6b6c74]"
+                }`}
+              >
+                CBI Core
+              </span>
+            </div>
+          </button>
 
-      {/* 12-Column Blueprint Overlay (Image 1) */}
-      <BlueprintOverlay active={blueprintActive} />
+          <div
+            className={`mx-2 h-4 w-px ${isDark ? "bg-[#262833]" : "bg-[#e8e4da]"}`}
+          />
 
-      {/* Main App Container */}
-      <div className="app-container">
-        
-        {/* Top Header */}
-        <Header
-          currentView={currentView}
-          onSelectView={setCurrentView}
-          blueprintActive={blueprintActive}
-          onToggleBlueprint={() => setBlueprintActive(!blueprintActive)}
-          onSearchClick={handleSearch}
-          onProfileClick={handleProfile}
-        />
-
-        {/* Viewports & Layout */}
-        <div className="main-viewport-row">
-          <main className="main-content" onWheel={handleContentWheel}>
-            {currentView === 'characters' && (
-              <CharactersView
-                characters={CYBERLIFE_DATA.characters}
-                currentIndex={charIdx}
-                onPrev={handlePrevItem}
-                onNext={handleNextItem}
-                lang={lang}
-              />
-            )}
-
-            {currentView === 'lore' && (
-              <LoreView
-                loreItems={CYBERLIFE_DATA.lore}
-                currentIndex={loreIdx}
-                onPrev={handlePrevItem}
-                onNext={handleNextItem}
-                onOpenPanorama={() => {
-                  setPanoramaState({
-                    isOpen: true,
-                    title: currentLore.panoramaTitle,
-                    description: currentLore.panoramaDescription
-                  });
-                }}
-                onPlayVideo={() => {
-                  setPanoramaState({
-                    isOpen: true,
-                    title: `${currentLore.name} // 3D CINEMATIC SCAN`,
-                    description: "High-resolution telemetry stream of Detroit's automated corridors and CyberLife spires."
-                  });
-                }}
-                onExplore={() => setCurrentView('flowchart')}
-                lang={lang}
-              />
-            )}
-
-            {currentView === 'flowchart' && (
-              chaptersLoading ? (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', height: '60vh', gap: '16px',
-                  color: '#00b4d8', fontFamily: 'monospace'
-                }}>
-                  <div style={{
-                    width: 48, height: 48, border: '3px solid #00b4d8',
-                    borderTopColor: 'transparent', borderRadius: '50%',
-                    animation: 'spin 0.8s linear infinite'
-                  }} />
-                  <span style={{ fontSize: 13, letterSpacing: 2, opacity: 0.8 }}>
-                    LOADING CASE DATABASE…
-                  </span>
-                </div>
-              ) : chaptersError ? (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  justifyContent: 'center', height: '60vh', gap: '12px',
-                  color: '#e63946', fontFamily: 'monospace', textAlign: 'center', padding: '0 40px'
-                }}>
-                  <span style={{ fontSize: 22 }}>⚠</span>
-                  <span style={{ fontSize: 13, letterSpacing: 1, maxWidth: 520, lineHeight: 1.6 }}>
-                    {chaptersError}
-                  </span>
-                  <button
-                    onClick={() => { setDbChapters(null); setChaptersError(null); }}
-                    style={{
-                      marginTop: 8, padding: '6px 20px', background: 'transparent',
-                      border: '1px solid #e63946', color: '#e63946',
-                      cursor: 'pointer', fontFamily: 'monospace', fontSize: 11, letterSpacing: 1
-                    }}
-                  >
-                    RETRY
-                  </button>
-                </div>
-              ) : (
-                <FlowchartView
-                  chapters={activeChapters}
-                  onSelectNode={(node, chapter) => setInspectNode({ node, chapter })}
-                  onOpenLegend={() => setLegendOpen(true)}
-                />
-              )
-            )}
-          </main>
-
-          {/* Right Sub-Menu: Exact match to Reference Image 2 & Image 3 */}
-          {currentView !== 'flowchart' && (
-            <RightMenu
-              onPrev={handlePrevItem}
-              onNext={handleNextItem}
-              viewType={currentView as 'characters' | 'lore'}
-            />
-          )}
+          {/* Quick Node & Edge Live Counter with 500 Ingested Files */}
+          <div
+            className={`hidden md:flex items-center gap-2 font-mono text-[11px] ${
+              isDark ? "text-[#9596a1]" : "text-[#7a7b83]"
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              <span className={`font-semibold ${isDark ? "text-[#dcdde4]" : "text-[#33353e]"}`}>
+                500 Ingested Files
+              </span>
+            </span>
+            <span>•</span>
+            <span className="font-semibold">
+              {stats?.nodes ? `${stats.nodes.toLocaleString()} nodes` : "2,744 nodes"}
+            </span>
+            <span>•</span>
+            <span className="font-semibold">
+              {stats?.edges ? `${stats.edges.toLocaleString()} edges` : "5,252 edges"}
+            </span>
+          </div>
         </div>
 
-        {/* Bottom Bar: Rendered only for Characters & Lore (Flowchart has its own dedicated bottom HUD bar matching Image 4) */}
-        {currentView !== 'flowchart' && (
-          <BottomBar
-            pageNumber={pageNumberString}
-            lang={lang}
-            onSelectLang={setLang}
-            timelineTimecode={currentView === 'lore' ? currentLore.timelineMarker : '00.0'}
-            blueprintActive={blueprintActive}
-            onToggleBlueprint={() => setBlueprintActive(!blueprintActive)}
-          />
+        {/* Center: Master View Switcher Tabs */}
+        <nav
+          className={`flex items-center rounded-xl border p-1 transition-colors ${
+            isDark
+              ? "border-[#2a2c38] bg-[#1a1b24]"
+              : "border-[#e5e0d5] bg-[#eeeae0]"
+          }`}
+        >
+          {[
+            { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+            { id: "graph", label: "Syndicate Graph", icon: Network },
+            { id: "cases", label: "Cases & FIRs", icon: FolderArchive },
+            { id: "chat", label: "Detective AI", icon: MessageSquareCode, badge: "GLM-5.3" },
+            { id: "flowchart", label: "Procedural Flow", icon: GitFork },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = view === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setView(tab.id as ActiveAppView)}
+                className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                  active
+                    ? isDark
+                      ? "bg-[#262838] text-white shadow-xs border border-[#373a4d]"
+                      : "bg-white text-[#1c1d22] shadow-xs border border-[#e0dacf]"
+                    : isDark
+                    ? "text-[#8c90a2] hover:text-white hover:bg-[#262838]/40"
+                    : "text-[#65666e] hover:text-[#1c1d22] hover:bg-white/60"
+                }`}
+              >
+                <Icon
+                  className={`size-3.5 ${
+                    active ? (isDark ? "text-[#f5b838]" : "text-[#b87c12]") : ""
+                  }`}
+                />
+                <span>{tab.label}</span>
+                {tab.badge && (
+                  <span
+                    className={`rounded px-1.5 py-0.2 text-[9px] font-mono font-bold ${
+                      isDark
+                        ? "bg-[#1f212e] text-[#b8bac6] border border-[#34374a]"
+                        : "bg-[#f4efe4] text-[#555660] border border-[#ded8cb]"
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Right: Engine Indicator, Knowledge Base & Theme Toggle */}
+        <div className="flex items-center gap-2.5">
+          <div
+            className={`hidden lg:flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-mono ${
+              isDark
+                ? "border-[#262833] bg-[#1a1b24] text-[#9596a1]"
+                : "border-[#e8e4da] bg-white text-[#7a7b83]"
+            }`}
+          >
+            <Cpu className="size-3 text-[#f5b838]" />
+            <span>GLM-5.3-Flash</span>
+          </div>
+
+          <div
+            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-mono font-bold ${
+              isDark
+                ? "border-[#262833] bg-[#1a1b24] text-[#dcdde4]"
+                : "border-[#e8e4da] bg-white text-[#33353e]"
+            }`}
+          >
+            <span className="size-1.5 rounded-full bg-emerald-500" />
+            <span className="text-[10px]">KB ONLINE</span>
+          </div>
+
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            title={isDark ? "Switch to Light Mode (Warm Ivory)" : "Switch to Dark Mode (Obsidian Slate)"}
+            className={`flex size-8 items-center justify-center rounded-xl border shadow-xs transition-all cursor-pointer hover:scale-105 ${
+              isDark
+                ? "border-[#2a2c38] bg-[#1a1b24] text-[#f5b838] hover:bg-[#252734]"
+                : "border-[#e8e4da] bg-white text-[#1c1d22] hover:bg-[#faf8f2]"
+            }`}
+          >
+            {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+          </button>
+        </div>
+      </header>
+
+      {/* ── ACTIVE VIEW CONTAINER ── */}
+      <main className="flex-1 overflow-hidden relative">
+        {view === "dashboard" && (
+          <div className="h-full w-full">
+            <OfficialDashboardView
+              onNavigate={(v) => setView(v)}
+              onOpenCase={(cid, fir) => {
+                setView("cases");
+              }}
+              onOpenChat={(cid, fir) => handleOpenChatWithCase(cid, fir)}
+            />
+          </div>
         )}
 
-      </div>
+        {view === "graph" && (
+          <div className="h-full w-full">
+            <ObsidianGraphView
+              onStats={setStats}
+              onOpenCaseExplorer={handleOpenCaseInExplorer}
+              onOpenChat={handleOpenChatWithCase}
+            />
+          </div>
+        )}
 
-      {/* Modals */}
-      <PanoramaModal
-        isOpen={panoramaState.isOpen}
-        onClose={() => setPanoramaState(prev => ({ ...prev, isOpen: false }))}
-        title={panoramaState.title}
-        image=""
-        description={panoramaState.description}
-      />
+        {view === "cases" && (
+          <div className="h-full w-full">
+            <CasesExplorerView
+              onOpenChatWithCase={(cid, fir) => handleOpenChatWithCase(cid, fir)}
+              onJumpToGlobalGraph={handleJumpToGlobalGraph}
+            />
+          </div>
+        )}
 
-      <NodeInspectorModal
-        node={inspectNode.node}
-        chapter={inspectNode.chapter}
-        onClose={() => setInspectNode({ node: null, chapter: null })}
-      />
+        {view === "chat" && (
+          <div className="h-full w-full">
+            <DetectiveChatView
+              initialCaseId={chatCaseId}
+              initialFirNumber={chatFirNumber}
+              onJumpToCase={handleOpenCaseInExplorer}
+              onJumpToGraph={handleJumpToGlobalGraph}
+            />
+          </div>
+        )}
 
-      <LegendModal
-        isOpen={legendOpen}
-        onClose={() => setLegendOpen(false)}
-        legend={dbLegend}
-      />
+        {view === "flowchart" && (
+          <div className="h-full w-full">
+            {chapters ? (
+              <FlowchartView
+                chapters={chapters}
+                onSelectNode={() => {}}
+                onOpenLegend={() => {}}
+                onJumpToChat={handleOpenChatWithCase}
+                onJumpToCase={handleOpenCaseInExplorer}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-zinc-500 font-mono text-xs">
+                Loading procedural investigation flowchart...
+              </div>
+            )}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

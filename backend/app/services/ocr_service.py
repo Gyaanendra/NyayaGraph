@@ -27,7 +27,7 @@ class OCRService:
         # Normalize whitespace
         return cleaned.strip()
 
-    def ocr_image_bytes(self, img_bytes: bytes, timeout: int = 60) -> str:
+    def ocr_image_bytes(self, img_bytes: bytes, timeout: int = 120) -> str:
         """Sends a single image to Unlimited-OCR and returns extracted text/markdown."""
         b64_img = base64.b64encode(img_bytes).decode("utf-8")
         payload = {
@@ -47,10 +47,10 @@ class OCRService:
         content = resp.json()["choices"][0]["message"]["content"]
         return self.clean_grounding_tokens(content)
 
-    def process_pdf(self, pdf_path: str, max_pages: Optional[int] = 5, dpi: int = 200) -> str:
+    def process_pdf(self, pdf_path: str, max_pages: Optional[int] = None, dpi: int = 200) -> str:
         """
         Renders PDF pages to images and processes each through Unlimited-OCR.
-        Supports page limit for fast demo ingestion.
+        Processes ALL pages when max_pages is None.
         """
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF not found: {pdf_path}")

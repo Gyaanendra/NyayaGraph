@@ -66,7 +66,7 @@ class GraphService:
         for src, tgt, lbl, ref in fir_links:
             if src in nodes_dict and tgt in nodes_dict:
                 all_edges.append(GraphEdge(
-                    id=f"EDGE_FIR_{edge_counter:03d}",
+                    id=f"EDGE_{case_id}_FIR_{edge_counter:03d}",
                     source=src,
                     target=tgt,
                     label=lbl,
@@ -93,7 +93,7 @@ class GraphService:
         if corporate_nodes and prime_broker:
             c_node = corporate_nodes[0]
             all_edges.append(GraphEdge(
-                id=f"EDGE_CBI_{edge_counter:03d}",
+                id=f"EDGE_{case_id}_{edge_counter:03d}",
                 source=c_node.id,
                 target=prime_broker.id,
                 label="MANAGING DIRECTOR & PROMOTER (CONTROL)",
@@ -108,7 +108,7 @@ class GraphService:
             for p in person_nodes:
                 if p.id != prime_broker.id:
                     all_edges.append(GraphEdge(
-                        id=f"EDGE_CBI_{edge_counter:03d}",
+                        id=f"EDGE_{case_id}_{edge_counter:03d}",
                         source=prime_broker.id,
                         target=p.id,
                         label="CO-CONSPIRATOR / AUTHORISED SIGNATORY",
@@ -122,7 +122,7 @@ class GraphService:
             # Connect lending banks to company
             for b in bank_nodes:
                 all_edges.append(GraphEdge(
-                    id=f"EDGE_CBI_{edge_counter:03d}",
+                    id=f"EDGE_{case_id}_{edge_counter:03d}",
                     source=b.id,
                     target=c_node.id,
                     label="DISBURSED CONSORTIUM CREDIT FACILITY",
@@ -137,7 +137,7 @@ class GraphService:
             for loc in location_nodes:
                 if loc.id != "LEAD_LOCKED_01":
                     all_edges.append(GraphEdge(
-                        id=f"EDGE_CBI_{edge_counter:03d}",
+                        id=f"EDGE_{case_id}_{edge_counter:03d}",
                         source=c_node.id,
                         target=loc.id,
                         label="REGISTERED FACILITY / ASSET",
@@ -151,7 +151,7 @@ class GraphService:
             # Connect broker to legal sections
             for sec in sec_nodes[:3]:
                 all_edges.append(GraphEdge(
-                    id=f"EDGE_CBI_{edge_counter:03d}",
+                    id=f"EDGE_{case_id}_{edge_counter:03d}",
                     source=prime_broker.id,
                     target=sec.id,
                     label="CHARGED UNDER STATUTE",
@@ -165,7 +165,7 @@ class GraphService:
             # Connect broker to cross-case locked hawala vault
             if "LEAD_LOCKED_01" in nodes_dict:
                 all_edges.append(GraphEdge(
-                    id=f"EDGE_CBI_{edge_counter:03d}",
+                    id=f"EDGE_{case_id}_{edge_counter:03d}",
                     source=prime_broker.id,
                     target="LEAD_LOCKED_01",
                     label="CASH LIQUIDATION TRAIL (CROSS-CASE LINK)",
@@ -274,10 +274,10 @@ class GraphService:
         return nodes
 
     def aggregate_all_cases_graph(
-        self, graphs: List[ConnectedCaseGraph]
+        self, graphs: List[ConnectedCaseGraph], stored_cases: Optional[List[dict]] = None
     ) -> Tuple[List[GraphNode], List[GraphEdge], Dict[str, List[str]], Dict[str, Any]]:
         """Merge per-case graphs; shared phones/IMEIs/UPIs/vehicles/names become
-        implicit bridges, plus explicit CROSS_CASE hub-to-hub bridge edges."""
+        implicit bridges, plus explicit CROSS_CASE hub-to-hub bridge edges and Fact nodes."""
         import re as _re
 
         def _norm(n: GraphNode) -> Optional[str]:
@@ -299,6 +299,21 @@ class GraphService:
         merged_edges: List[GraphEdge] = []
         key_to_cases: Dict[str, List[str]] = {}
         seen_edge_keys = set()
+        seen_edge_ids = set()
+
+        def add_unique_edge(edge: GraphEdge, prefix: Optional[str] = None):
+            eid = edge.id
+            if eid in seen_edge_ids:
+                if prefix and not eid.startswith(prefix):
+                    eid = f"{prefix}_{eid}"
+                base = eid
+                c = 1
+                while eid in seen_edge_ids:
+                    eid = f"{base}_{c}"
+                    c += 1
+                edge = edge.model_copy(update={"id": eid})
+            seen_edge_ids.add(edge.id)
+            merged_edges.append(edge)
 
         for g in graphs:
             for n in g.nodes:
@@ -320,9 +335,114 @@ class GraphService:
                 ek = (e.source, e.target, e.label, e.source_type)
                 if ek not in seen_edge_keys:
                     seen_edge_keys.add(ek)
-                    merged_edges.append(e)
+                    add_unique_edge(e.model_copy(deep=True), prefix=g.case_id)
 
         shared = {k: v for k, v in key_to_cases.items() if len(v) >= 2}
+
+        # Case hub anchor nodes so the syndicate view has per-case anchors.
+        for idx, g in enumerate(graphs):
+            hid = f"HUB_{g.case_id}"
+            if hid not in merged_nodes:
+                merged_nodes[hid] = GraphNode(
+                    id=hid,
+                    label=f"FIR {g.fir_number}",
+                    category=EntityCategory.EVIDENCE,
+                    sublabel=g.police_station,
+                    node_type=DetroitNodeType.ANCHOR,
+                    community_id=900 + idx,
+                    x=120.0 + idx * 420.0,
+                    y=40.0,
+                    details={"case_id": g.case_id, "is_case_hub": True, "fir_number": g.fir_number, "police_station": g.police_station},
+                )
+
+        # Connect Case Hub to primary accused / first node of that case
+        for g in graphs:
+            hid = f"HUB_{g.case_id}"
+            case_node_ids = [n.id for n in g.nodes if n.id != hid]
+            if case_node_ids:
+                # Find prime broker or first accused
+                broker_node = next((n for n in g.nodes if n.is_broker), None)
+                target_id = broker_node.id if broker_node else case_node_ids[0]
+                edge_id = f"EDGE_HUB_ACCUSED_{g.case_id}"
+                ek = (hid, target_id, "REGISTERED_AGAINST", "FIR")
+                if ek not in seen_edge_keys:
+                    seen_edge_keys.add(ek)
+                    add_unique_edge(GraphEdge(
+                        id=edge_id,
+                        source=hid,
+                        target=target_id,
+                        label="REGISTERED_AGAINST",
+                        weight=4.0,
+                        source_type="FIR",
+                        evidence_ref="State Police / CBI FIR Record",
+                        is_suspicious=True
+                    ), prefix=g.case_id)
+
+        # Synthesize Fact nodes from stored_cases
+        if stored_cases:
+            for c in stored_cases:
+                c_id = c.get("case_id", "")
+                c_fir = c.get("fir_number", c_id)
+                hid = f"HUB_{c_id}"
+                facts_list = c.get("facts", []) or []
+                for f_idx, fact in enumerate(facts_list):
+                    fid = fact.get("fact_id") or f"fact_{f_idx+1}"
+                    fact_node_id = f"FACT_{c_id}_{fid}"
+                    desc = fact.get("description", "") or "Case Fact"
+                    short_desc = desc if len(desc) <= 45 else desc[:45] + "..."
+                    
+                    if fact_node_id not in merged_nodes:
+                        merged_nodes[fact_node_id] = GraphNode(
+                            id=fact_node_id,
+                            label=short_desc,
+                            category=EntityCategory.FACT,
+                            sublabel=fact.get("category", "CRIME_FACT"),
+                            node_type=DetroitNodeType.ACTION,
+                            community_id=500 + f_idx,
+                            details={
+                                "fact_id": fid,
+                                "full_description": desc,
+                                "category": fact.get("category", "FACT"),
+                                "timestamp": fact.get("timestamp"),
+                                "location": fact.get("location"),
+                                "source": fact.get("source", "FIR"),
+                                "case_id": c_id,
+                                "fir_number": c_fir,
+                                "evidence_ids": fact.get("evidence_ids", [])
+                            }
+                        )
+
+                    # Edge: HUB -> Fact
+                    ek_fact = (hid, fact_node_id, "ESTABLISHES_FACT", "FIR")
+                    if ek_fact not in seen_edge_keys:
+                        seen_edge_keys.add(ek_fact)
+                        add_unique_edge(GraphEdge(
+                            id=f"EDGE_HUB_{fact_node_id}",
+                            source=hid,
+                            target=fact_node_id,
+                            label="ESTABLISHES_FACT",
+                            weight=3.0,
+                            source_type="FIR",
+                            evidence_ref=fact.get("source", "FIR Evidence"),
+                            is_suspicious=False
+                        ), prefix=c_id)
+
+                    # Edge: Fact -> Evidence IDs (accused, bank, phone)
+                    for ev_id in fact.get("evidence_ids", []):
+                        if ev_id in merged_nodes:
+                            ek_ev = (fact_node_id, ev_id, "INVOLVES_ENTITY", "FIR")
+                            if ek_ev not in seen_edge_keys:
+                                seen_edge_keys.add(ek_ev)
+                                add_unique_edge(GraphEdge(
+                                    id=f"EDGE_EV_{fact_node_id}_{ev_id}",
+                                    source=fact_node_id,
+                                    target=ev_id,
+                                    label="INVOLVES_ENTITY",
+                                    weight=2.5,
+                                    source_type="FIR",
+                                    evidence_ref=f"Linked by Fact: {fid}",
+                                    is_suspicious=True
+                                ), prefix=c_id)
 
         # Explicit hub-to-hub bridge edges weighted by shared-identifier overlap.
         bridge_edges: List[GraphEdge] = []
@@ -344,23 +464,7 @@ class GraphService:
                         is_suspicious=True,
                     )
                     bridge_edges.append(edge)
-        merged_edges.extend(bridge_edges)
-
-        # Case hub anchor nodes so the syndicate view has per-case anchors.
-        for idx, g in enumerate(graphs):
-            hid = f"HUB_{g.case_id}"
-            if hid not in merged_nodes:
-                merged_nodes[hid] = GraphNode(
-                    id=hid,
-                    label=g.fir_number,
-                    category=EntityCategory.EVIDENCE,
-                    sublabel=g.police_station,
-                    node_type=DetroitNodeType.ANCHOR,
-                    community_id=900 + idx,
-                    x=120.0 + idx * 420.0,
-                    y=40.0,
-                    details={"case_id": g.case_id, "is_case_hub": True},
-                )
+                    add_unique_edge(edge)
 
         nodes = list(merged_nodes.values())
         stats = {
@@ -369,5 +473,6 @@ class GraphService:
             "total_edges": len(merged_edges),
             "bridge_edge_count": len(bridge_edges),
             "shared_identifier_count": len(shared),
+            "total_facts": sum(1 for n in nodes if n.category == EntityCategory.FACT),
         }
         return nodes, merged_edges, shared, stats

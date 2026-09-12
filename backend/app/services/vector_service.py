@@ -2,19 +2,19 @@ import os
 from typing import Dict, Any, List, Optional
 import chromadb
 from chromadb.config import Settings
-from ..core.database import get_root_data_dir
+from ..core.database import get_root_data_dir, get_knowledge_base_dir
 
 
 class VectorService:
     """
     ChromaDB Vector Knowledge Base for Semantic Legal Forensics & Cross-Case Matching.
-    Persists locally in root NyayaGraph/data/chroma_db directory.
+    Persists locally in root NyayaGraph/data/knowledge_base/chroma_db directory.
     """
 
     def __init__(self, persist_dir: Optional[str] = None):
         self.persist_dir = persist_dir or os.environ.get(
             "CHROMA_PERSIST_DIR",
-            os.path.join(get_root_data_dir(), "chroma_db")
+            os.path.join(get_knowledge_base_dir(), "chroma_db")
         )
         os.makedirs(self.persist_dir, exist_ok=True)
         self.client = chromadb.PersistentClient(
@@ -40,7 +40,7 @@ class VectorService:
         metadata: Optional[Dict[str, Any]] = None
     ):
         """Indexes or updates a case narrative and MO in ChromaDB."""
-        doc_text = f"FIR {fir_number} at {police_station}.\nMODUS OPERANDI: {modus_operandi}\nNARRATIVE: {narrative[:4000]}"
+        doc_text = f"FIR {fir_number} at {police_station}.\nMODUS OPERANDI: {modus_operandi}\nNARRATIVE:\n{narrative.strip()}"
         meta = {
             "case_id": case_id,
             "fir_number": fir_number,

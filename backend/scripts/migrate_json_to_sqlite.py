@@ -190,7 +190,7 @@ def migrate():
 
     print("\n[OK] Migration Complete!")
     print(f"     - Database: {get_db_path()}")
-    print(f"     - Vector DB: {os.path.join(get_root_data_dir(), 'chroma_db')}")
+    print(f"     - Vector DB: {vector_service.persist_dir}")
     print(f"     - Cases: {migrated_cases}")
     print(f"     - Entities: {migrated_entities}")
     print(f"     - Graph Nodes: {migrated_nodes}")

@@ -223,7 +223,7 @@ export default function InvestigatorConsole() {
       } else if (!isCancelled && CASES_DATABASE[selectedCaseId]) {
         setCurrentCase(CASES_DATABASE[selectedCaseId]);
         const initialNodes = CASES_DATABASE[selectedCaseId].graph.nodes;
-        setSelectedNode(initialNodes.find(n => n.is_broker) || initialNodes[0] || null);
+        setSelectedNode(initialNodes.find((n: any) => n.is_broker) || initialNodes[0] || null);
       }
       setIsLoadingCase(false);
     }

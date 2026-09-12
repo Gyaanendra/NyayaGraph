@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import router as cases_router, blockchain_router, flowchart_router
+from app.api.endpoints import router as cases_router, blockchain_router, flowchart_router, chat_router
 
 app = FastAPI(
     title="NyayaGraph-GN API",
@@ -19,6 +19,7 @@ app.add_middleware(
 app.include_router(cases_router)
 app.include_router(blockchain_router)
 app.include_router(flowchart_router)
+app.include_router(chat_router)
 
 @app.get("/")
 def read_root():

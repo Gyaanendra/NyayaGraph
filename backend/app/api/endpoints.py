@@ -16,9 +16,11 @@ from ..services.pattern_service import PatternService
 from ..services.cross_case_service import CrossCaseService
 from ..services.blockchain_service import BlockchainService
 from ..services.case_store_service import CaseStoreService
+from ..services.chat_service import ChatService
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 blockchain_router = APIRouter(prefix="/api/v1/blockchain", tags=["blockchain"])
+chat_router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 extractor_service = ExtractorService()
 fusion_service = FusionService()
@@ -27,6 +29,8 @@ pattern_service = PatternService()
 cross_case_service = CrossCaseService()
 blockchain_service = BlockchainService()
 case_store = CaseStoreService(blockchain=blockchain_service)
+chat_service = ChatService()
+
 
 
 def load_default_samples():
@@ -228,11 +232,20 @@ def get_aggregate_graph():
     if not stored:
         raise HTTPException(status_code=404, detail="No cases in registry")
     graphs = [ConnectedCaseGraph(**c["graph"]) for c in stored]
-    nodes, edges, shared, stats = graph_service.aggregate_all_cases_graph(graphs)
+    nodes, edges, shared, stats = graph_service.aggregate_all_cases_graph(graphs, stored_cases=stored)
     return AggregateGraphResponse(
         case_ids=[c["case_id"] for c in stored], nodes=nodes, edges=edges,
         bridge_edge_count=stats.get("bridge_edge_count", 0),
         shared_identifiers=shared, stats=stats)
+
+
+@router.get("/search/similar")
+def search_similar_cases(query: str, top_k: int = 5):
+    """Semantic vector search across case narratives and modus operandi stored in ChromaDB."""
+    if not query.strip():
+        raise HTTPException(status_code=400, detail="Query parameter cannot be empty")
+    return case_store._vector_service.search_similar_cases(query, top_k=top_k)
+
 
 
 @router.get("/{case_id}", response_model=CaseDetailResponse)
@@ -426,4 +439,40 @@ def get_flowchart_chapters():
         {"type": "warning",                 "label": "Cross-Case Ghost Node",       "color": "#e63946", "desc": "Entity appearing in multiple FIRs — high-priority cross-case link."},
     ]
     return {"chapters": chapters, "legend": legend}
+
+
+from pydantic import BaseModel
+
+class ChatInquiryRequest(BaseModel):
+    query: str
+    case_id: Optional[str] = None
+    chat_history: Optional[list[dict]] = None
+
+
+@chat_router.post("")
+def handle_chat_query(req: ChatInquiryRequest):
+    """
+    RAG-driven AI detective interrogation against NyayaGraph Knowledge Base
+    powered by Bitdeer GLM-5.3-Flash.
+    """
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    return chat_service.answer_query(
+        query=req.query,
+        case_id=req.case_id,
+        chat_history=req.chat_history
+    )
+
+
+@router.post("/chat")
+def handle_case_chat_query(req: ChatInquiryRequest):
+    """Mirror endpoint on /api/v1/cases/chat."""
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    return chat_service.answer_query(
+        query=req.query,
+        case_id=req.case_id,
+        chat_history=req.chat_history
+    )
+
 
