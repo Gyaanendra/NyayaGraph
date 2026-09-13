@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  sendChatMessage,
+  streamChatMessage,
   fetchAllCases,
-  type ChatMessage,
   type ChatCitation,
-  type ChatApiResponse,
   type ApiCaseSummary,
+  type SseStepEvent,
+  type SseToolCallEvent,
+  type SseNodesRetrievedEvent,
 } from "@/lib/api";
 import { useTheme } from "@/context/ThemeContext";
 import { MarkdownView } from "@/components/MarkdownView";
@@ -20,17 +21,14 @@ import {
   Bot,
   User,
   ExternalLink,
-  ChevronRight,
   Copy,
   Check,
   Sparkles,
   Layers,
   Scale,
-  CreditCard,
   Search,
-  Filter,
-  ArrowRight,
   Terminal,
+  Zap,
 } from "lucide-react";
 
 interface DetectiveChatViewProps {
@@ -40,16 +38,44 @@ interface DetectiveChatViewProps {
   onJumpToGraph?: (nodeId?: string) => void;
 }
 
+interface RetrievedNode {
+  id: string;
+  label: string;
+  category: string;
+  role: string;
+  case_id?: string;
+  fir_number?: string;
+}
+
 interface MessageItem {
   id: string;
   role: "user" | "assistant";
-  content: string;
+  content: string; // accumulates streaming tokens
   timestamp: string;
   engine?: string;
   latency?: number;
   citations?: ChatCitation[];
   focusedCaseId?: string;
+  // SSE extras
+  steps?: Array<SseStepEvent | SseToolCallEvent>;
+  thinking?: string;
+  retrievedNodes?: RetrievedNode[];
+  isStreaming?: boolean;
 }
+
+const CATEGORY_COLORS: Record<string, string> = {
+  PERSON: "#38bdf8",
+  BANK_ACCOUNT: "#10b981",
+  PHONE: "#a78bfa",
+  IMEI: "#f472b6",
+  VEHICLE: "#fb923c",
+  UPI_ID: "#34d399",
+  LOCATION: "#64748b",
+  LEGAL_SECTION: "#94a3b8",
+  EVIDENCE: "#fbbf24",
+  ORGANIZATION: "#f59e0b",
+  FACT: "#e2e8f0",
+};
 
 const FORENSIC_PRESETS = [
   {
@@ -84,6 +110,220 @@ const FORENSIC_PRESETS = [
   },
 ];
 
+// ── In-Chat Animated Node Network ──────────────────────────────────────────
+function NodeSproutCanvas({
+  nodes,
+  isDark,
+}: {
+  nodes: RetrievedNode[];
+  isDark: boolean;
+}) {
+  const [visible, setVisible] = useState<Set<number>>(new Set());
+  const timersRef = useRef<NodeJS.Timeout[]>([]);
+
+  useEffect(() => {
+    // Clear previous timers
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    setVisible(new Set());
+
+    const total = Math.min(nodes.length, 12);
+    for (let i = 0; i < total; i++) {
+      const t = setTimeout(() => {
+        setVisible((prev) => new Set([...prev, i]));
+      }, 180 + i * 130);
+      timersRef.current.push(t);
+    }
+    return () => timersRef.current.forEach(clearTimeout);
+  }, [nodes]);
+
+  const displayNodes = nodes.slice(0, 12);
+  const cols = Math.min(4, displayNodes.length);
+  const rows = Math.ceil(displayNodes.length / cols);
+  const W = 220;
+  const H = rows * 52 + 16;
+
+  return (
+    <div
+      className={`mt-3 rounded-2xl border p-3 ${
+        isDark ? "border-line bg-canvas" : "border-line bg-canvas"
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles className="size-3.5 text-accent" />
+        <span
+          className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
+            isDark ? "text-ink-muted" : "text-ink-muted"
+          }`}
+        >
+          {nodes.length} Network Nodes Retrieved
+        </span>
+        <span
+          className={`ml-auto text-[10px] font-mono px-1.5 py-0.5 rounded ${
+            isDark ? "bg-accent/15 text-accent" : "bg-accent/15 text-accent"
+          }`}
+        >
+          LIVE
+        </span>
+      </div>
+
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
+        <defs>
+          <filter id="nodeGlow">
+            <feGaussianBlur stdDeviation="1.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        {displayNodes.map((node, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const cx = (W / cols) * col + W / cols / 2;
+          const cy = 24 + row * 52;
+          const color = CATEGORY_COLORS[node.category] || "#a1a1aa";
+          const isVis = visible.has(i);
+
+          return (
+            <g key={node.id} style={{ opacity: isVis ? 1 : 0, transition: "opacity 0.3s" }}>
+              {/* Connection line to center (hub effect) for first node */}
+              {i > 0 && i < 4 && visible.has(0) && isVis && (
+                <line
+                  x1={W / cols / 2}
+                  y1={24}
+                  x2={cx}
+                  y2={cy}
+                  stroke={color}
+                  strokeWidth="0.5"
+                  strokeOpacity="0.25"
+                  strokeDasharray="3 3"
+                />
+              )}
+              <circle
+                cx={cx}
+                cy={cy}
+                r={i === 0 ? 9 : 7}
+                fill={color}
+                fillOpacity={0.18}
+                stroke={color}
+                strokeWidth={i === 0 ? 1.5 : 1}
+                filter="url(#nodeGlow)"
+                style={
+                  isVis
+                    ? {
+                        animation: "nodePop 0.35s cubic-bezier(0.16,1,0.3,1) both",
+                        transformBox: "fill-box",
+                        transformOrigin: "center",
+                      }
+                    : {}
+                }
+              />
+              <text
+                x={cx}
+                y={cy + 17}
+                textAnchor="middle"
+                fontSize="7"
+                fill={isDark ? "#dcdde4" : "#33353e"}
+                fontFamily="monospace"
+              >
+                {(node.label || "").slice(0, 14)}
+              </text>
+              <text
+                x={cx}
+                y={cy + 25}
+                textAnchor="middle"
+                fontSize="6"
+                fill={color}
+                fillOpacity={0.8}
+                fontFamily="monospace"
+              >
+                {node.category}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <style>{`
+        @keyframes nodePop {
+          0% { transform: scale(0); opacity: 0; }
+          60% { transform: scale(1.3); opacity: 1; }
+          85% { transform: scale(0.9); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ── Step Pills ──────────────────────────────────────────────────────────────
+function StepPills({
+  steps,
+  isStreaming,
+  isDark,
+}: {
+  steps: Array<SseStepEvent | SseToolCallEvent>;
+  isStreaming: boolean;
+  isDark: boolean;
+}) {
+  if (!isStreaming && steps.length === 0) return null;
+  return (
+    <div
+      className={`mb-2 space-y-1.5 rounded-xl border p-2.5 ${
+        isDark ? "border-line bg-canvas" : "border-line bg-panel"
+      }`}
+    >
+      <span
+        className={`text-[9px] font-bold uppercase tracking-widest font-mono ${
+          isDark ? "text-ink-muted" : "text-ink-muted"
+        }`}
+      >
+        Pipeline
+      </span>
+      {steps.map((s, i) => (
+        <div
+          key={i}
+          className={`flex items-center gap-2 rounded-lg px-2 py-1 text-[10.5px] font-mono ${
+            isDark ? "bg-panel text-ink" : "bg-panel-deep text-ink-muted"
+          }`}
+        >
+          <span
+            className={`size-1.5 rounded-full shrink-0 ${
+              s.type === "tool_call" ? "bg-purple-400" : "bg-accent"
+            }`}
+          />
+          <span className="truncate">{s.message}</span>
+          {(s as any).progress != null && (
+            <span
+              className={`ml-auto text-[10px] font-bold ${
+                isDark ? "text-accent" : "text-accent"
+              }`}
+            >
+              {(s as any).progress}%
+            </span>
+          )}
+        </div>
+      ))}
+      {isStreaming && (
+        <div className="flex items-center gap-2 px-1.5">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+            <span className="relative inline-flex size-2 rounded-full bg-accent/100" />
+          </span>
+          <span
+            className={`text-[10px] font-mono animate-pulse ${
+              isDark ? "text-accent" : "text-accent"
+            }`}
+          >
+            Groq AI streaming…
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DetectiveChatView({
   initialCaseId,
   initialFirNumber,
@@ -102,13 +342,12 @@ export default function DetectiveChatView({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Fetch cases for selector
   useEffect(() => {
     fetchAllCases().then((data) => {
-      if (data && data.length > 0) {
-        setCasesList(data);
-      }
+      if (data && data.length > 0) setCasesList(data);
     });
   }, []);
 
@@ -124,7 +363,7 @@ export default function DetectiveChatView({
     }
   }, [initialCaseId, initialFirNumber]);
 
-  // Initial welcome message with structured markdown
+  // Initial welcome message
   useEffect(() => {
     if (messages.length === 0) {
       setMessages([
@@ -133,16 +372,16 @@ export default function DetectiveChatView({
           role: "assistant",
           content:
             "### CBI Central Intelligence & Forensic Copilot\n\n" +
-            "Connected to the active **CBI Case Knowledge Base** (SQLite Registry, ChromaDB Vector Embeddings, and BSA 2023 Evidence Ledger) powered by **Bitdeer AI (GLM-5.3-Flash)**.\n\n" +
+            "Connected to the active **CBI Case Knowledge Base** (SQLite Registry, ChromaDB Vector Embeddings, BSA 2023 Evidence Ledger) powered by **Groq AI (llama-3.3-70b-versatile)** with ultra-low latency streaming.\n\n" +
             "**Investigative Scope & Capabilities:**\n" +
-            "• **FIR Dossiers**: Interrogate specifics of 500 ingested CBI case files & forensic dossiers (e.g. `RC0232024A0012`, `RC2212024E0018`)\n" +
+            "• **FIR Dossiers**: Interrogate 500+ ingested CBI case files (e.g. `RC0232024A0012`)\n" +
             "• **Accused Entities**: Profile named accused, public servants, corporate promoters, and prime brokers\n" +
-            "• **Financial & Banking Conduits**: Trace bank consortium defaults (Canara Bank, SBI, Bank of India) and shell accounts\n" +
-            "• **Statutory Offence Codes**: Audit invoked sections under `IPC 420`, `IPC 120-B`, `PC Act Sec 7`, `Sec 13(2)`\n" +
-            "• **Cryptographic Verification**: Verify electronic records under **BSA 2023 Section 63(4)**\n\n" +
-            "Select an investigation preset from the left panel, choose an active case context, or enter your inquiry below.",
+            "• **Financial & Banking Conduits**: Trace bank consortium defaults and shell accounts\n" +
+            "• **Statutory Offence Codes**: Audit `IPC 420`, `IPC 120-B`, `PC Act Sec 7`, `Sec 13(2)`\n" +
+            "• **Cryptographic Verification**: Verify under **BSA 2023 Section 63(4)**\n\n" +
+            "Select a forensic preset or enter your inquiry below. Live streaming with node visualization enabled.",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          engine: "Bitdeer AI • GLM-5.3-Flash",
+          engine: "Groq AI • llama-3.3-70b-versatile",
         },
       ]);
     }
@@ -153,55 +392,109 @@ export default function DetectiveChatView({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const handleSend = async (queryText?: string) => {
-    const q = (queryText || input).trim();
-    if (!q || loading) return;
+  const updateStreamingMsg = useCallback(
+    (
+      msgId: string,
+      updater: (prev: MessageItem) => Partial<MessageItem>
+    ) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, ...updater(m) } : m))
+      );
+    },
+    []
+  );
 
-    const userMsg: MessageItem = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: q,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
+  const handleSend = useCallback(
+    async (queryText?: string) => {
+      const q = (queryText || input).trim();
+      if (!q || loading) return;
 
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
+      // Abort any in-flight SSE
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
 
-    try {
-      const historyPayload = messages.slice(-4).map((m) => ({
+      const userMsg: MessageItem = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: q,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      const aiMsgId = `ai-${Date.now()}`;
+      const aiMsg: MessageItem = {
+        id: aiMsgId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        engine: "Groq AI • llama-3.3-70b-versatile",
+        steps: [],
+        thinking: "",
+        retrievedNodes: [],
+        isStreaming: true,
+      };
+
+      setMessages((prev) => [...prev, userMsg, aiMsg]);
+      setInput("");
+      setLoading(true);
+
+      const historyPayload = messages.slice(-6).map((m) => ({
         role: m.role,
         content: m.content,
       }));
-
       const caseParam = selectedCaseId !== "ALL" ? selectedCaseId : undefined;
-      const res: ChatApiResponse = await sendChatMessage(q, caseParam, historyPayload);
 
-      const aiMsg: MessageItem = {
-        id: `ai-${Date.now()}`,
-        role: "assistant",
-        content: res.answer,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        engine: res.engine || "Bitdeer AI • GLM-5.3-Flash",
-        latency: res.latency_seconds,
-        citations: res.citations,
-        focusedCaseId: res.focused_case_id,
-      };
-
-      setMessages((prev) => [...prev, aiMsg]);
-    } catch (err: unknown) {
-      const errorMsg: MessageItem = {
-        id: `err-${Date.now()}`,
-        role: "assistant",
-        content: `⚠️ **Inference Notice**: ${(err as Error)?.message || "Failed to reach AI Detective endpoint."}\n\nPlease check that the backend server is running on port 8000.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        engine: "Fallback Error Handler",
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      streamChatMessage(
+        q,
+        caseParam,
+        historyPayload,
+        {
+          onStep: (e) => {
+            updateStreamingMsg(aiMsgId, (m) => ({
+              steps: [...(m.steps || []), e],
+            }));
+          },
+          onThinking: (e) => {
+            updateStreamingMsg(aiMsgId, (m) => ({
+              thinking: (m.thinking || "") + e.chunk,
+            }));
+          },
+          onNodesRetrieved: (e) => {
+            updateStreamingMsg(aiMsgId, () => ({
+              retrievedNodes: e.nodes,
+            }));
+          },
+          onToken: (e) => {
+            updateStreamingMsg(aiMsgId, (m) => ({
+              content: m.content + e.chunk,
+            }));
+          },
+          onDone: (e) => {
+            updateStreamingMsg(aiMsgId, () => ({
+              isStreaming: false,
+              engine: e.engine || "Groq AI",
+              latency: e.latency_seconds,
+              citations: e.citations || [],
+            }));
+            setLoading(false);
+          },
+          onError: (e) => {
+            const errMsg =
+              e instanceof Error ? e.message : (e as any)?.message || "Stream error";
+            updateStreamingMsg(aiMsgId, (m) => ({
+              content:
+                m.content ||
+                `⚠️ **Stream Error**: ${errMsg}\n\nPlease check that the backend server is running on port 8000.`,
+              isStreaming: false,
+            }));
+            setLoading(false);
+          },
+        },
+        ctrl.signal
+      );
+    },
+    [input, loading, messages, selectedCaseId, updateStreamingMsg]
+  );
 
   const copyMessage = (idx: number, content: string) => {
     navigator.clipboard.writeText(content);
@@ -210,8 +503,10 @@ export default function DetectiveChatView({
   };
 
   const clearChat = () => {
+    abortRef.current?.abort();
     setMessages([]);
     setSelectedCaseId("ALL");
+    setLoading(false);
   };
 
   const activeCaseObj = casesList.find((c) => c.case_id === selectedCaseId);
@@ -219,25 +514,29 @@ export default function DetectiveChatView({
   return (
     <div
       className={`flex h-full w-full overflow-hidden font-sans select-none transition-colors duration-150 ${
-        isDark ? "bg-[#0f1015] text-[#f5f4ef]" : "bg-[#f5f3ec] text-[#202124]"
+        isDark ? "bg-canvas text-ink" : "bg-canvas text-ink"
       }`}
     >
-      {/* ── 1. LEFT WORKBENCH SIDEBAR: INVESTIGATION PRESETS & CONTEXT ── */}
+      {/* ── 1. LEFT WORKBENCH SIDEBAR ── */}
       <aside
         className={`w-80 xl:w-88 shrink-0 border-r flex flex-col justify-between overflow-hidden transition-colors ${
-          isDark ? "border-[#262833] bg-[#14151c]" : "border-[#e8e4da] bg-[#f9f8f4]"
+          isDark ? "border-line bg-panel-deep" : "border-line bg-panel-deep"
         }`}
       >
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Sidebar Header */}
           <div
             className={`flex h-13 shrink-0 items-center justify-between border-b px-4 ${
-              isDark ? "border-[#262833]" : "border-[#e8e4da]"
+              isDark ? "border-line" : "border-line"
             }`}
           >
             <div className="flex items-center gap-2">
-              <Terminal className={`size-4 ${isDark ? "text-[#f5b838]" : "text-[#b87c12]"}`} />
-              <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
+              <Terminal className={`size-4 ${isDark ? "text-accent" : "text-accent"}`} />
+              <span
+                className={`text-xs font-bold uppercase tracking-wider ${
+                  isDark ? "text-white" : "text-ink"
+                }`}
+              >
                 Investigation Console
               </span>
             </div>
@@ -246,8 +545,8 @@ export default function DetectiveChatView({
               title="Reset Session"
               className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-mono transition-colors cursor-pointer ${
                 isDark
-                  ? "border-[#2a2c38] bg-[#1a1b24] text-[#9596a1] hover:text-white"
-                  : "border-[#e8e4da] bg-white text-[#7a7b83] hover:text-[#1c1d22]"
+                  ? "border-line bg-panel text-ink-muted hover:text-white"
+                  : "border-line bg-panel text-ink-muted hover:text-ink"
               }`}
             >
               <RotateCcw className="size-3" />
@@ -258,12 +557,12 @@ export default function DetectiveChatView({
           {/* Active Case Context Filter */}
           <div
             className={`p-4 border-b space-y-2 ${
-              isDark ? "border-[#262833] bg-[#1a1b24]/40" : "border-[#e8e4da] bg-[#faf8f3]"
+              isDark ? "border-line bg-panel/40" : "border-line bg-panel-deep"
             }`}
           >
             <div
               className={`flex items-center justify-between text-[11px] font-mono ${
-                isDark ? "text-[#9596a1]" : "text-[#7a7b83]"
+                isDark ? "text-ink-muted" : "text-ink-muted"
               }`}
             >
               <span className="uppercase font-bold tracking-wider">Case Scope:</span>
@@ -281,8 +580,8 @@ export default function DetectiveChatView({
               onChange={(e) => setSelectedCaseId(e.target.value)}
               className={`w-full truncate rounded-xl border px-2.5 py-1.5 text-xs font-mono outline-none cursor-pointer transition-colors ${
                 isDark
-                  ? "border-[#2a2c38] bg-[#14151c] text-[#f5f4ef] focus:border-[#f5b838]"
-                  : "border-[#e4dfd3] bg-white text-[#202124] focus:border-[#d29b28]"
+                  ? "border-line bg-panel-deep text-ink focus:border-accent"
+                  : "border-line bg-panel text-ink focus:border-accent"
               }`}
             >
               <option value="ALL">🌐 All Cases (Global Syndicate Graph)</option>
@@ -296,29 +595,31 @@ export default function DetectiveChatView({
               <div
                 className={`rounded-xl border p-2 text-[11px] font-mono space-y-1 ${
                   isDark
-                    ? "border-[#262833] bg-[#14151c] text-[#9596a1]"
-                    : "border-[#e8e4da] bg-white text-[#7a7b83]"
+                    ? "border-line bg-panel-deep text-ink-muted"
+                    : "border-line bg-panel text-ink-muted"
                 }`}
               >
                 <div className="flex justify-between">
                   <span>Entities:</span>
-                  <span className={`font-semibold ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
+                  <span className={`font-semibold ${isDark ? "text-white" : "text-ink"}`}>
                     {activeCaseObj.node_count} nodes
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Date Logged:</span>
-                  <span>{activeCaseObj.date_time ? activeCaseObj.date_time.split(" ")[0] : "2026-09-12"}</span>
+                  <span>
+                    {activeCaseObj.date_time ? activeCaseObj.date_time.split(" ")[0] : "—"}
+                  </span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Investigation Presets Section */}
+          {/* Investigation Presets */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
             <span
               className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
-                isDark ? "text-[#8a8c98]" : "text-[#7a7b83]"
+                isDark ? "text-ink-muted" : "text-ink-muted"
               }`}
             >
               Forensic Inquiry Presets
@@ -330,17 +631,18 @@ export default function DetectiveChatView({
                   <button
                     key={idx}
                     onClick={() => handleSend(preset.query)}
-                    className={`w-full text-left rounded-2xl border p-3 transition-all cursor-pointer ${
+                    disabled={loading}
+                    className={`w-full text-left rounded-2xl border p-3 transition-all cursor-pointer disabled:opacity-50 ${
                       isDark
-                        ? "border-[#262833] bg-[#1a1b24] hover:border-[#383b4b] hover:bg-[#222430]"
-                        : "border-[#e8e4da] bg-white hover:border-[#ded8cb] hover:bg-[#faf8f2]"
+                        ? "border-line bg-panel hover:border-line-strong hover:bg-raised"
+                        : "border-line bg-panel hover:border-line-strong hover:bg-panel"
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <Icon className="size-3.5 text-[#f5b838]" />
+                      <Icon className="size-3.5 text-accent" />
                       <span
                         className={`text-xs font-bold ${
-                          isDark ? "text-white" : "text-[#1c1d22]"
+                          isDark ? "text-white" : "text-ink"
                         }`}
                       >
                         {preset.title}
@@ -348,7 +650,7 @@ export default function DetectiveChatView({
                     </div>
                     <p
                       className={`mt-1 text-[11px] line-clamp-2 leading-relaxed ${
-                        isDark ? "text-[#9596a1]" : "text-[#7a7b83]"
+                        isDark ? "text-ink-muted" : "text-ink-muted"
                       }`}
                     >
                       {preset.desc}
@@ -364,13 +666,20 @@ export default function DetectiveChatView({
         <div
           className={`border-t p-4 font-mono text-[10px] space-y-1 ${
             isDark
-              ? "border-[#262833] bg-[#101117] text-[#7d7f8d]"
-              : "border-[#e8e4da] bg-[#f4efe4] text-[#7a7b83]"
+              ? "border-line bg-panel-deep text-ink-faint"
+              : "border-line bg-raised text-ink-muted"
           }`}
         >
           <div className="flex justify-between">
             <span>AI ENGINE:</span>
-            <span className={`font-semibold ${isDark ? "text-white" : "text-[#1c1d22]"}`}>GLM-5.3-Flash</span>
+            <span className={`font-semibold flex items-center gap-1 ${isDark ? "text-white" : "text-ink"}`}>
+              <Zap className="size-2.5 text-accent" />
+              Groq AI (llama-3.3-70b)
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>STREAM:</span>
+            <span className="text-verified font-semibold">SSE Enabled</span>
           </div>
           <div className="flex justify-between">
             <span>REGISTRY:</span>
@@ -379,19 +688,19 @@ export default function DetectiveChatView({
         </div>
       </aside>
 
-      {/* ── 2. MAIN CHAT TERMINAL FEED & INTERROGATION AREA ── */}
+      {/* ── 2. MAIN CHAT TERMINAL ── */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* Sub-Header */}
         <div
           className={`flex h-13 shrink-0 items-center justify-between border-b px-6 transition-colors ${
             isDark
-              ? "border-[#262833] bg-[#14151c] text-white"
-              : "border-[#e8e4da] bg-[#f9f8f4] text-[#1c1d22]"
+              ? "border-line bg-panel-deep text-white"
+              : "border-line bg-panel-deep text-ink"
           }`}
         >
           <div className="flex items-center gap-3">
-            <div className="flex size-7 items-center justify-center rounded-xl bg-[#202126] text-white">
-              <Bot className="size-4 text-[#f5b838]" />
+            <div className="flex size-7 items-center justify-center rounded-xl bg-charcoal text-white">
+              <Bot className="size-4 text-accent" />
             </div>
             <div className="flex items-center gap-2.5">
               <span className="text-xs font-bold uppercase tracking-wider">
@@ -400,19 +709,19 @@ export default function DetectiveChatView({
               <span
                 className={`flex items-center gap-1 rounded-md border px-1.5 py-0.2 text-[10px] font-mono ${
                   isDark
-                    ? "border-[#154632] bg-[#06281e] text-[#34d399]"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    ? "border-verified/40 bg-verified/15 text-verified"
+                    : "border-verified/40 bg-verified/10 text-verified"
                 }`}
               >
-                <span className="size-1.5 rounded-full bg-emerald-500" />
+                <span className="size-1.5 rounded-full bg-verified/100" />
                 ONLINE
               </span>
               {selectedCaseId !== "ALL" && (
                 <span
                   className={`rounded-md border px-2 py-0.2 text-[10px] font-mono ${
                     isDark
-                      ? "border-[#2a2c38] bg-[#1a1b24] text-[#dcdde4]"
-                      : "border-[#e8e4da] bg-white text-[#1c1d22]"
+                      ? "border-line bg-panel text-ink"
+                      : "border-line bg-panel text-ink"
                   }`}
                 >
                   CONTEXT: FIR {activeCaseObj?.fir_number || selectedCaseId}
@@ -420,15 +729,17 @@ export default function DetectiveChatView({
               )}
             </div>
           </div>
-
           <div className="flex items-center gap-3 font-mono text-[11px] text-zinc-500">
-            <span>INFERENCE: BITDEER HOSTED</span>
+            <span className="flex items-center gap-1">
+              <Zap className="size-3 text-accent" />
+              GROQ SSE STREAMING
+            </span>
             <span>•</span>
             <span>TOP_K: 8</span>
           </div>
         </div>
 
-        {/* Message Feed (Structured Ergonomic Column) */}
+        {/* Message Feed */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-4xl xl:max-w-5xl mx-auto space-y-6">
             {messages.map((m, idx) => {
@@ -442,105 +753,154 @@ export default function DetectiveChatView({
                     <div
                       className={`flex size-8 shrink-0 items-center justify-center rounded-xl border mt-1 shadow-2xs ${
                         isDark
-                          ? "bg-[#252838] text-white border-[#383b4b]"
-                          : "bg-[#faf8f3] text-[#1c1d22] border-[#e8e4da]"
+                          ? "bg-raised text-white border-line-strong"
+                          : "bg-panel-deep text-ink border-line"
                       }`}
                     >
-                      <Bot className="size-4 text-[#f5b838]" />
+                      <Bot className="size-4 text-accent" />
                     </div>
                   )}
 
                   <div
-                    className={`flex flex-col gap-2 rounded-2xl p-4.5 text-sm leading-relaxed ${
-                      isUser
-                        ? isDark
-                          ? "max-w-[80%] bg-[#262838] text-white border border-[#3b3e52] shadow-sm"
-                          : "max-w-[80%] bg-[#202126] text-white shadow-sm"
-                        : isDark
-                        ? "max-w-[92%] border border-[#262833] bg-[#1a1b24] text-[#e1e2e8] shadow-sm"
-                        : "max-w-[92%] border border-[#ede9df] bg-white text-[#202124] shadow-xs"
-                    }`}
+                    className={`flex flex-col gap-1 ${isUser ? "items-end max-w-[80%]" : "items-start max-w-[92%]"}`}
                   >
-                    {/* Header (Assistant) */}
-                    {!isUser && (
-                      <div
-                        className={`flex items-center justify-between border-b pb-2 text-xs font-mono ${
-                          isDark ? "border-[#262833] text-[#8a8c98]" : "border-[#ede9df] text-[#7a7b83]"
-                        }`}
-                      >
-                        <span className="font-medium">
-                          {m.engine || "NyayaGraph Forensic Engine"}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          {m.latency && (
-                            <span className="text-[11px] text-[#9596a1]">
-                              {m.latency}s latency
-                            </span>
-                          )}
-                          <button
-                            onClick={() => copyMessage(idx, m.content)}
-                            className="flex items-center gap-1 text-[11px] hover:underline cursor-pointer"
-                            title="Copy response"
-                          >
-                            {copiedIndex === idx ? (
-                              <Check className="size-3.5 text-emerald-500" />
-                            ) : (
-                              <Copy className="size-3.5" />
-                            )}
-                            <span>{copiedIndex === idx ? "Copied" : "Copy"}</span>
-                          </button>
-                        </div>
-                      </div>
+                    {/* Step pills — only shown on assistant messages */}
+                    {!isUser && (m.steps?.length || m.isStreaming) ? (
+                      <StepPills
+                        steps={m.steps || []}
+                        isStreaming={!!m.isStreaming}
+                        isDark={isDark}
+                      />
+                    ) : null}
+
+                    {/* Node Sprouting Animation */}
+                    {!isUser && m.retrievedNodes && m.retrievedNodes.length > 0 && (
+                      <NodeSproutCanvas nodes={m.retrievedNodes} isDark={isDark} />
                     )}
 
-                    {/* Formatted Markdown Content */}
-                    <MarkdownView content={m.content} />
-
-                    {/* Citations Pill Bar */}
-                    {m.citations && m.citations.length > 0 && (
-                      <div
-                        className={`mt-3.5 flex flex-col gap-2 border-t pt-3 ${
-                          isDark ? "border-[#262833]" : "border-[#ede9df]"
-                        }`}
-                      >
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
-                            isDark ? "text-[#8a8c98]" : "text-[#7a7b83]"
-                          }`}
-                        >
-                          Evidence References ({m.citations.length} Retrieved Dockets):
-                        </span>
-                        <div className="flex flex-wrap gap-2">
-                          {m.citations.map((cit, cIdx) => (
-                            <button
-                              key={cIdx}
-                              onClick={() => cit.case_id && onJumpToCase && onJumpToCase(cit.case_id)}
-                              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-mono transition-colors cursor-pointer ${
-                                isDark
-                                  ? "border-[#2a2c38] bg-[#14151c] text-[#dcdde4] hover:bg-[#222430]"
-                                  : "border-[#e8e4da] bg-[#faf8f3] text-[#1c1d22] hover:bg-[#eeeae0]"
-                              }`}
-                            >
-                              <FileText className="size-3.5 text-[#f5b838]" />
-                              <span>FIR {cit.fir_number || cit.case_id}</span>
-                              {cit.similarity_score && (
-                                <span className="text-[10px] text-emerald-500 font-sans font-medium">
-                                  ({cit.similarity_score}%)
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Timestamp Footer */}
+                    {/* Main message bubble */}
                     <div
-                      className={`text-[10px] font-mono self-end pt-1 ${
-                        isDark ? "text-[#7d7f8d]" : "text-[#9e9ea5]"
+                      className={`flex flex-col gap-2 rounded-2xl p-4.5 text-sm leading-relaxed ${
+                        isUser
+                          ? isDark
+                            ? "bg-raised text-white border border-line-strong shadow-sm"
+                            : "bg-charcoal text-white shadow-sm"
+                          : isDark
+                          ? "border border-line bg-panel text-ink shadow-sm"
+                          : "border border-line bg-panel text-ink shadow-xs"
                       }`}
                     >
-                      {m.timestamp}
+                      {/* Header (Assistant) */}
+                      {!isUser && (
+                        <div
+                          className={`flex items-center justify-between border-b pb-2 text-xs font-mono ${
+                            isDark ? "border-line text-ink-muted" : "border-line text-ink-muted"
+                          }`}
+                        >
+                          <span className="font-medium flex items-center gap-1.5">
+                            {m.isStreaming && (
+                              <span className="size-1.5 rounded-full bg-accent animate-pulse" />
+                            )}
+                            {m.engine || "Groq AI • llama-3.3-70b-versatile"}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            {m.latency && (
+                              <span className="text-[11px] text-ink-muted">{m.latency}s latency</span>
+                            )}
+                            {!m.isStreaming && (
+                              <button
+                                onClick={() => copyMessage(idx, m.content)}
+                                className="flex items-center gap-1 text-[11px] hover:underline cursor-pointer"
+                                title="Copy response"
+                              >
+                                {copiedIndex === idx ? (
+                                  <Check className="size-3.5 text-verified" />
+                                ) : (
+                                  <Copy className="size-3.5" />
+                                )}
+                                <span>{copiedIndex === idx ? "Copied" : "Copy"}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Thinking Drawer */}
+                      {!isUser && m.thinking && (
+                        <details
+                          className={`rounded-xl border p-2 text-xs ${
+                            isDark
+                              ? "border-accent/40 bg-accent/10 text-accent/80"
+                              : "border-accent/40 bg-accent/10 text-accent"
+                          }`}
+                          open={!!m.isStreaming}
+                        >
+                          <summary className="font-mono text-[10px] font-bold cursor-pointer select-none">
+                            🧠 Groq Reasoning Trace ({m.thinking.length} chars)
+                          </summary>
+                          <div className="mt-1.5 text-[10px] font-mono leading-normal whitespace-pre-wrap opacity-90 border-t border-inherit pt-1.5 max-h-36 overflow-y-auto">
+                            {m.thinking}
+                          </div>
+                        </details>
+                      )}
+
+                      {/* Message content */}
+                      {m.content ? (
+                        <MarkdownView content={m.content} tone={isUser ? "dark" : "auto"} />
+                      ) : m.isStreaming ? (
+                        <div className="flex items-center gap-1.5">
+                          <div className="size-1.5 animate-bounce rounded-full bg-accent" style={{ animationDelay: "0ms" }} />
+                          <div className="size-1.5 animate-bounce rounded-full bg-accent" style={{ animationDelay: "150ms" }} />
+                          <div className="size-1.5 animate-bounce rounded-full bg-accent" style={{ animationDelay: "300ms" }} />
+                        </div>
+                      ) : null}
+
+                      {/* Citations */}
+                      {m.citations && m.citations.length > 0 && (
+                        <div
+                          className={`mt-3.5 flex flex-col gap-2 border-t pt-3 ${
+                            isDark ? "border-line" : "border-line"
+                          }`}
+                        >
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
+                              isDark ? "text-ink-muted" : "text-ink-muted"
+                            }`}
+                          >
+                            Evidence References ({m.citations.length} Retrieved Dockets):
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {m.citations.map((cit, cIdx) => (
+                              <button
+                                key={cIdx}
+                                onClick={() => cit.case_id && onJumpToCase && onJumpToCase(cit.case_id)}
+                                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-mono transition-colors cursor-pointer ${
+                                  isDark
+                                    ? "border-line bg-panel-deep text-ink hover:bg-raised"
+                                    : "border-line bg-panel-deep text-ink hover:bg-raised"
+                                }`}
+                              >
+                                <FileText className="size-3.5 text-accent" />
+                                <span>FIR {cit.fir_number || cit.case_id}</span>
+                                {cit.similarity_score && (
+                                  <span className="text-[10px] text-verified font-sans font-medium">
+                                    ({cit.similarity_score}%)
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Timestamp */}
+                      <div
+                        className={`text-[10px] font-mono self-end pt-1 ${
+                          isDark ? "text-ink-faint" : "text-ink-faint"
+                        }`}
+                      >
+                        {m.timestamp}
+                      </div>
                     </div>
                   </div>
 
@@ -548,8 +908,8 @@ export default function DetectiveChatView({
                     <div
                       className={`flex size-8 shrink-0 items-center justify-center rounded-xl border mt-1 shadow-2xs ${
                         isDark
-                          ? "bg-[#252838] text-white border-[#383b4b]"
-                          : "bg-[#202126] text-white border-[#202126]"
+                          ? "bg-raised text-white border-line-strong"
+                          : "bg-charcoal text-white border-charcoal"
                       }`}
                     >
                       <User className="size-4" />
@@ -559,50 +919,6 @@ export default function DetectiveChatView({
               );
             })}
 
-            {/* Loading Indicator */}
-            {loading && (
-              <div className="flex w-full gap-3 justify-start">
-                <div
-                  className={`flex size-8 shrink-0 items-center justify-center rounded-xl border ${
-                    isDark
-                      ? "bg-[#252838] text-white border-[#383b4b]"
-                      : "bg-[#faf8f3] text-[#1c1d22] border-[#e8e4da]"
-                  }`}
-                >
-                  <Bot className="size-4 text-[#f5b838]" />
-                </div>
-                <div
-                  className={`flex items-center gap-3 rounded-2xl rounded-tl-sm border px-4 py-3 text-sm shadow-xs transition-colors ${
-                    isDark
-                      ? "border-[#262833] bg-[#1a1b24] text-[#dcdde4]"
-                      : "border-[#ede9df] bg-white text-[#1c1d22]"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="size-1.5 animate-bounce rounded-full bg-[#f5b838]"
-                      style={{ animationDelay: "0ms" }}
-                    />
-                    <div
-                      className="size-1.5 animate-bounce rounded-full bg-[#f5b838]"
-                      style={{ animationDelay: "150ms" }}
-                    />
-                    <div
-                      className="size-1.5 animate-bounce rounded-full bg-[#f5b838]"
-                      style={{ animationDelay: "300ms" }}
-                    />
-                  </div>
-                  <span
-                    className={`font-mono text-xs ${
-                      isDark ? "text-[#9596a1]" : "text-[#7a7b83]"
-                    }`}
-                  >
-                    Querying Knowledge Base & Synthesizing GLM-5.3-Flash…
-                  </span>
-                </div>
-              </div>
-            )}
-
             <div ref={messagesEndRef} />
           </div>
         </div>
@@ -610,7 +926,7 @@ export default function DetectiveChatView({
         {/* Bottom Input Area */}
         <div
           className={`border-t p-4 transition-colors ${
-            isDark ? "border-[#262833] bg-[#14151c]" : "border-[#e8e4da] bg-[#f9f8f4]"
+            isDark ? "border-line bg-panel-deep" : "border-line bg-panel-deep"
           }`}
         >
           <div className="max-w-4xl xl:max-w-5xl mx-auto flex flex-col gap-2">
@@ -621,8 +937,8 @@ export default function DetectiveChatView({
               }}
               className={`flex items-center gap-2 rounded-2xl border p-2 transition-colors ${
                 isDark
-                  ? "border-[#2a2c38] bg-[#1a1b24] focus-within:border-[#f5b838]"
-                  : "border-[#e8e4da] bg-white focus-within:border-[#f5b838]"
+                  ? "border-line bg-panel focus-within:border-accent"
+                  : "border-line bg-panel focus-within:border-accent"
               }`}
             >
               <input
@@ -633,13 +949,13 @@ export default function DetectiveChatView({
                 onChange={(e) => setInput(e.target.value)}
                 disabled={loading}
                 className={`flex-1 bg-transparent px-3 py-1 text-sm outline-none font-sans ${
-                  isDark ? "text-white placeholder-[#7d7f8d]" : "text-[#1c1d22] placeholder-[#9e9ea5]"
+                  isDark ? "text-white placeholder-ink-faint" : "text-ink placeholder-ink-faint"
                 }`}
               />
               <button
                 type="submit"
                 disabled={loading || !input.trim()}
-                className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#f5b838] text-zinc-950 hover:brightness-105 disabled:opacity-40 transition-all cursor-pointer font-bold shadow-xs"
+                className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-contrast hover:brightness-105 disabled:opacity-40 transition-all cursor-pointer font-bold shadow-xs"
               >
                 <Send className="size-4" />
               </button>

@@ -11,13 +11,13 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: "light",
+  theme: "dark",
   toggleTheme: () => {},
   setTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("light");
+  const [theme, setThemeState] = useState<Theme>("dark");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -27,9 +27,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       setThemeState(saved);
       applyTheme(saved);
     } else {
-      // Default to light mode (Executive Warm Ivory)
-      setThemeState("light");
-      applyTheme("light");
+      // Default to dark mode (Noir Evidence Room)
+      setThemeState("dark");
+      applyTheme("dark");
     }
   }, []);
 

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ..models.schemas import (
     CaseProcessingResult, ConnectedCaseGraph, EvidenceItem, EvidenceIngestResponse,
@@ -17,6 +18,7 @@ from ..services.cross_case_service import CrossCaseService
 from ..services.blockchain_service import BlockchainService
 from ..services.case_store_service import CaseStoreService
 from ..services.chat_service import ChatService
+from ..services.pdf_service import PDFService
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 blockchain_router = APIRouter(prefix="/api/v1/blockchain", tags=["blockchain"])
@@ -30,6 +32,7 @@ cross_case_service = CrossCaseService()
 blockchain_service = BlockchainService()
 case_store = CaseStoreService(blockchain=blockchain_service)
 chat_service = ChatService()
+pdf_service = PDFService()
 
 
 
@@ -248,6 +251,12 @@ def search_similar_cases(query: str, top_k: int = 5):
 
 
 
+@router.get("/pdf/catalog")
+def get_pdf_catalog(limit: int = 60):
+    """List of available archived CBI FIR PDFs with preview metadata."""
+    return pdf_service.list_archived_pdfs(limit=limit)
+
+
 @router.get("/{case_id}", response_model=CaseDetailResponse)
 def get_case_detail(case_id: str):
     """Full case processing result + BSA 63(4) certificate."""
@@ -266,6 +275,77 @@ def get_case_graph(case_id: str):
     if not stored:
         raise HTTPException(status_code=404, detail=f"Case {case_id} not found")
     return ConnectedCaseGraph(**stored["graph"])
+
+
+@router.get("/{case_id}/fir-pdf")
+def get_case_fir_pdf(case_id: str):
+    """Serves the authentic scanned CBI FIR PDF for previewing in browser."""
+    pdf_info = pdf_service.find_pdf_for_case(case_id)
+    if not pdf_info or not os.path.isfile(pdf_info["file_path"]):
+        raise HTTPException(status_code=404, detail=f"No FIR PDF found for case '{case_id}'")
+    
+    return FileResponse(
+        path=pdf_info["file_path"],
+        media_type="application/pdf",
+        filename=pdf_info["filename"],
+        headers={
+            "Content-Disposition": f'inline; filename="{pdf_info["filename"]}"',
+            "X-NyayaGraph-SHA256": pdf_info["sha256_hash"],
+            "X-NyayaGraph-BSA": "Section 63(4) Bharatiya Sakshya Adhiniyam 2023"
+        }
+    )
+
+
+@router.get("/{case_id}/fir-pdf-info")
+def get_case_fir_pdf_info(case_id: str):
+    """Returns verification metadata and availability of the FIR PDF."""
+    pdf_info = pdf_service.find_pdf_for_case(case_id)
+    if not pdf_info:
+        return {
+            "available": False,
+            "case_id": case_id,
+            "message": "FIR PDF not available in current archive."
+        }
+    return {
+        **pdf_info,
+        "pdf_url": f"/api/v1/cases/{case_id}/fir-pdf"
+    }
+
+
+from pydantic import BaseModel
+
+class CaseAiAnalysisRequest(BaseModel):
+    custom_focus: Optional[str] = None
+
+
+@router.post("/{case_id}/ai-analysis")
+def get_case_ai_analysis(case_id: str, req: Optional[CaseAiAnalysisRequest] = None):
+    """Deep forensic AI analysis of the case description using Groq / DeepSeek Flash."""
+    custom_focus = req.custom_focus if req else None
+    res = chat_service.analyze_case_description(case_id, custom_focus=custom_focus)
+    if not res.get("success"):
+        raise HTTPException(status_code=404, detail=res.get("error", "Analysis failed"))
+    return res
+
+
+@router.get("/{case_id}/ai-analysis-stream")
+def stream_case_ai_analysis(case_id: str, custom_focus: Optional[str] = None):
+    """
+    SSE stream: real-time Groq AI forensic analysis with step events, thinking traces,
+    and token-by-token streaming so the frontend can animate live pipeline progress.
+    """
+    def _gen():
+        yield from chat_service.stream_case_analysis(case_id, custom_focus=custom_focus)
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @blockchain_router.get("/verify/{hash_or_tx}")
@@ -453,7 +533,7 @@ class ChatInquiryRequest(BaseModel):
 def handle_chat_query(req: ChatInquiryRequest):
     """
     RAG-driven AI detective interrogation against NyayaGraph Knowledge Base
-    powered by Bitdeer GLM-5.3-Flash.
+    powered by Groq AI (llama-3.3-70b) with DeepSeek Flash fallback.
     """
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
@@ -461,6 +541,33 @@ def handle_chat_query(req: ChatInquiryRequest):
         query=req.query,
         case_id=req.case_id,
         chat_history=req.chat_history
+    )
+
+
+@chat_router.post("/stream")
+def stream_chat_query(req: ChatInquiryRequest):
+    """
+    SSE stream: Groq AI detective chat with live nodes_retrieved event for
+    the immersive in-chat node sprouting animation on the frontend.
+    """
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    def _gen():
+        yield from chat_service.stream_chat_query(
+            query=req.query,
+            case_id=req.case_id,
+            chat_history=req.chat_history,
+        )
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 

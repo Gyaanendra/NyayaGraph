@@ -13,13 +13,7 @@ import {
 } from "d3-force";
 import { fetchAggregateGraph, fetchAllCases, type ApiCaseSummary } from "@/lib/api";
 import { useTheme } from "@/context/ThemeContext";
-import {
-  DOC_NODES,
-  DOC_EDGES,
-  getStepPositions,
-  DOC_MARKDOWN_CONTENT,
-  type DocNode,
-} from "@/data/docGraphData";
+// Doc graph data import removed - doc-build demo mode replaced with case-by-case FIR reveal
 import {
   Folder,
   FolderOpen,
@@ -187,205 +181,19 @@ export default function ObsidianGraphView({
   const [linkForce, setLinkForce] = useState(1.0);
   const [linkDistance, setLinkDistance] = useState(240);
 
-  // Viewport & Pan/Zoom (Default percentage view locked to 28% [25-30% range] for Syndicate, 100% for Doc Build)
+  // Viewport & Pan/Zoom (Default percentage view locked to 26%)
   const [size, setSize] = useState({ w: 1100, h: 750 });
-  const [transform, setTransform] = useState({ x: 0, y: 0, k: 0.28 });
-  const [docTransform, setDocTransform] = useState({ x: 0, y: 0, k: 1.0 });
-  const sizeRef = useRef(size);
-  sizeRef.current = size;
+  const [transform, setTransform] = useState({ x: 0, y: 0, k: 0.26 });
   const [, setTick] = useState(0);
 
-  // ── Graph View Mode: "doc-build" (6.3s Cinematic Sequence) | "cbi-syndicate" (500 Case Network) ──
-  const [graphMode, setGraphMode] = useState<"doc-build" | "cbi-syndicate">("doc-build");
+  // ── Case-by-Case FIR Build-Out Animation State ──
+  // Reveals the master syndicate graph FIR-by-FIR with smooth node pop-in
+  const [revealedCaseCount, setRevealedCaseCount] = useState<number>(0);
+  const [isBuildAnimating, setIsBuildAnimating] = useState<boolean>(true);
+  const [buildPhase, setBuildPhase] = useState<"waiting" | "building" | "settling" | "interactive">("waiting");
+  const buildAnimTimersRef = useRef<NodeJS.Timeout[]>([]);
 
-  // ── 6.3-Second Cinematic Doc Build-Out State Machine ──
-  // 0.0s - 0.6s: Idle state — Single root node "index" centered, gently breathing
-  // 0.6s - 5.5s: Spawning — 8 nodes spawn sequentially (~0.61s each), drawing arrow edges, layout smoothly rebalances
-  // 5.5s - 6.0s: Settle — Motion damps out, resting layout: index roughly center-top, children fanned below/around it
-  // 6.0s - 6.3s: Mouse cursor enters top-right, implying interactivity
-  // > 6.3s: Full interactivity (drag, hover, click to inspect markdown dossier, pan & zoom)
-  type DocAnimPhase = "idle" | "spawning" | "settling" | "interactive";
-  const [docStep, setDocStep] = useState<number>(0);
-  const [docPhase, setDocPhase] = useState<DocAnimPhase>("idle");
-  const [cursorVisible, setCursorVisible] = useState<boolean>(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [cursorOpacity, setCursorOpacity] = useState<number>(0);
-  const [isPlaying6s, setIsPlaying6s] = useState<boolean>(true);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>("index");
-  const [hoverDocId, setHoverDocId] = useState<string | null>(null);
-  const [draggedDocNodes, setDraggedDocNodes] = useState<Record<string, { x: number; y: number }>>({});
-
-  // 6.3-Second Sequence Timeout Controller (Clean, single-pass timeouts, zero 60fps re-render loops!)
-  useEffect(() => {
-    if (!isPlaying6s || graphMode !== "doc-build") return;
-
-    setDocStep(0);
-    setDocPhase("idle");
-    setCursorVisible(false);
-    setCursorOpacity(0);
-    setHoverDocId(null);
-
-    const timers: NodeJS.Timeout[] = [];
-
-    // Step 1: 0.60s (600ms) - Node 1 (01-soup-overview) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(1);
-        setDocPhase("spawning");
-      }, 600)
-    );
-
-    // Step 2: 1.21s (1212ms) - Node 2 (02-recommended-models) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(2);
-      }, 1212)
-    );
-
-    // Step 3: 1.82s (1825ms) - Node 3 (03-conda-environment-setup) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(3);
-      }, 1825)
-    );
-
-    // Step 4: 2.44s (2437ms) - Node 4 (04-experiment-template) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(4);
-      }, 2437)
-    );
-
-    // Step 5: 3.05s (3050ms) - Node 5 (05-training-guide-and-workflow) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(5);
-      }, 3050)
-    );
-
-    // Step 6: 3.66s (3662ms) - Node 6 (06-dataset-domains-roadmap) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(6);
-      }, 3662)
-    );
-
-    // Step 7: 4.28s (4275ms) - Node 7 (07-function-calling-guide) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(7);
-      }, 4275)
-    );
-
-    // Step 8: 4.89s (4887ms) - Node 8 (08-markdown-formatter-assistant-guide) appears
-    timers.push(
-      setTimeout(() => {
-        setDocStep(8);
-      }, 4887)
-    );
-
-    // Step 9: 5.50s (5500ms) - Settle: physics damps out, resting layout
-    timers.push(
-      setTimeout(() => {
-        setDocPhase("settling");
-      }, 5500)
-    );
-
-    // Step 10: 6.00s (6000ms) - Mouse cursor enters top-right
-    timers.push(
-      setTimeout(() => {
-        const cx = sizeRef.current.w / 2;
-        const cy = sizeRef.current.h / 2;
-        setCursorVisible(true);
-        setCursorPos({ x: cx + 240, y: cy - 90 });
-        setCursorOpacity(1);
-      }, 6000)
-    );
-
-    // Step 10b: 6.15s - Cursor glides toward 02-recommended-models
-    timers.push(
-      setTimeout(() => {
-        const cx = sizeRef.current.w / 2;
-        const cy = sizeRef.current.h / 2;
-        setCursorPos({ x: cx + 160, y: cy - 30 });
-        setHoverDocId("02-recommended-models");
-      }, 6150)
-    );
-
-    // Step 11: 6.30s (6300ms) - Complete! Transition cleanly into interactive resting state
-    timers.push(
-      setTimeout(() => {
-        setDocPhase("interactive");
-        setCursorOpacity(0);
-        setHoverDocId(null);
-        setIsPlaying6s(false);
-        setTimeout(() => setCursorVisible(false), 350);
-      }, 6300)
-    );
-
-    return () => {
-      timers.forEach(clearTimeout);
-    };
-  }, [isPlaying6s, graphMode]);
-
-  const skipDocAnimation = useCallback(() => {
-    setDocStep(8);
-    setDocPhase("interactive");
-    setCursorVisible(false);
-    setCursorOpacity(0);
-    setHoverDocId(null);
-    setIsPlaying6s(false);
-  }, []);
-
-  const replayDocAnimation = useCallback(() => {
-    setDraggedDocNodes({});
-    setDocTransform({ x: 0, y: 0, k: 1.0 });
-    setIsPlaying6s(true);
-  }, []);
-
-  // Base coordinates calculated for the current animation step
-  const basePositions = useMemo(() => {
-    const cx = size.w / 2;
-    const cy = size.h / 2;
-    return getStepPositions(docStep, cx, cy);
-  }, [docStep, size.w, size.h]);
-
-  const getDocNodePos = useCallback(
-    (id: string) => {
-      if (draggedDocNodes[id]) return draggedDocNodes[id];
-      return basePositions[id] ?? { x: size.w / 2, y: size.h / 2 };
-    },
-    [draggedDocNodes, basePositions, size.w, size.h]
-  );
-
-  // Progressive visible doc nodes & edges
-  const visibleDocNodes = useMemo(() => {
-    return DOC_NODES.slice(0, docStep + 1);
-  }, [docStep]);
-
-  const visibleDocEdges = useMemo(() => {
-    const visibleIds = new Set(visibleDocNodes.map((n) => n.id));
-    return DOC_EDGES.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
-  }, [visibleDocNodes]);
-
-  const focusDocNode = useCallback(
-    (id: string) => {
-      setSelectedDocId(id);
-      setSelectedNodeId(null);
-      setRightHudMode("details");
-      setSettingsPanelOpen(true);
-      const node = DOC_NODES.find((d) => d.id === id);
-      if (node) {
-        setOpenTabs((tabs) => {
-          if (tabs.some((t) => t.id === id)) return tabs;
-          return [...tabs, { id, label: node.filename }];
-        });
-      }
-    },
-    []
-  );
-
-  // ── CBI Case Network State (Settled once, frozen in place at 28% zoom) ──
+  // ── CBI Case Network State ──
   const [revealedCount, setRevealedCount] = useState<number>(nodes.length || 1);
   const [isTimelinePlaying, setIsTimelinePlaying] = useState<boolean>(false);
 
@@ -397,6 +205,7 @@ export default function ObsidianGraphView({
 
   // Lookups
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const firstHubId = useMemo(() => nodes.find((n) => isHub(n))?.id || nodes[0]?.id || "", [nodes]);
 
   // Degree Map to order nodes by graph centrality
   const degreeMap = useMemo(() => {
@@ -415,25 +224,46 @@ export default function ObsidianGraphView({
     return nodes;
   }, [nodes]);
 
+  // ── Progressive Case-by-Case Reveal: Compute visible node IDs ──
+  const revealedNodeIds = useMemo<Set<string> | null>(() => {
+    if (!isBuildAnimating) return null; // null = show everything
+    const ids = new Set<string>();
+    return ids;
+  }, [isBuildAnimating]);
+
+  // These get properly computed after caseFileGroups is available (below)
+  const [visibleNodeSet, setVisibleNodeSet] = useState<Set<string> | null>(null);
+
   const visibleNodes = useMemo(() => {
-    return nodes;
-  }, [nodes]);
+    if (!visibleNodeSet) return nodes;
+    return nodes.filter((n) => visibleNodeSet.has(n.id));
+  }, [nodes, visibleNodeSet]);
 
   const visibleLinks = useMemo(() => {
-    return links;
-  }, [links]);
+    if (!visibleNodeSet) return links;
+    return links.filter((l) => {
+      const s = typeof l.source === "object" ? (l.source as SimNode).id : String(l.source);
+      const t = typeof l.target === "object" ? (l.target as SimNode).id : String(l.target);
+      return visibleNodeSet.has(s) && visibleNodeSet.has(t);
+    });
+  }, [links, visibleNodeSet]);
 
   const skipAnimation = useCallback(() => {
+    // Cancel all pending timers
+    buildAnimTimersRef.current.forEach(clearTimeout);
+    buildAnimTimersRef.current = [];
+    setIsBuildAnimating(false);
+    setBuildPhase("interactive");
+    setVisibleNodeSet(null); // Show all nodes immediately
     setIsTimelinePlaying(false);
   }, []);
 
   const replayAnimation = useCallback(() => {
-    if (graphMode === "doc-build") {
-      replayDocAnimation();
-    } else {
-      fitView();
-    }
-  }, [graphMode, replayDocAnimation]);
+    setRevealedCaseCount(0);
+    setVisibleNodeSet(firstHubId ? new Set([firstHubId]) : new Set());
+    setIsBuildAnimating(true);
+    setBuildPhase("waiting");
+  }, [firstHubId]);
 
   // Direct Connections (Neighbors) lookup
   const neighbors = useMemo(() => {
@@ -608,7 +438,7 @@ export default function ObsidianGraphView({
   useEffect(() => {
     if (!nodes.length) return;
 
-    // Run simulation to settle node positions ONCE, then freeze them completely!
+    // Run simulation to settle node positions ONCE with high performance, then freeze them completely!
     const sim = forceSimulation<SimNode, SimLink>(nodes)
       .force(
         "link",
@@ -620,9 +450,9 @@ export default function ObsidianGraphView({
       .force(
         "charge",
         forceManyBody<SimNode>()
-          .theta(0.95)
-          .strength((d) => (isHub(d) ? -repelForce * 35 : d.category === "FACT" ? -repelForce * 25 : -repelForce * 18))
-          .distanceMax(600)
+          .theta(0.92)
+          .strength((d) => (isHub(d) ? -repelForce * 30 : d.category === "FACT" ? -repelForce * 20 : -repelForce * 15))
+          .distanceMax(320)
       )
       .force("center", forceCenter(size.w / 2, size.h / 2).strength(centerForce * 0.08))
       .force(
@@ -631,10 +461,10 @@ export default function ObsidianGraphView({
           .radius((d) => (isHub(d) ? 22 * nodeSize + 25 : 14 * nodeSize + 15))
           .strength(0.5)
       )
-      .alphaDecay(0.06);
+      .alphaDecay(0.08);
 
-    // Pre-settle synchronously so nodes are placed into their clusters
-    for (let i = 0; i < 50; i++) sim.tick();
+    // Fast synchronous settle — with initial radial layout already placed, 16 ticks achieves clean clustering instantly
+    for (let i = 0; i < 16; i++) sim.tick();
 
     // STOP SIMULATION IMMEDIATELY! All 2,744 node positions are now FROZEN in place!
     sim.stop();
@@ -676,7 +506,7 @@ export default function ObsidianGraphView({
     return () => ro.disconnect();
   }, []);
 
-  // Fit camera with comfortable, readable scale (locked to default 28% [25-30% range])
+  // Fit camera with comfortable, readable scale (locked to default 26% with right HUD clearance)
   const fitView = useCallback(() => {
     if (!nodes.length || size.w <= 0 || size.h <= 0) return;
     const xs = nodes.map((n) => n.x ?? size.w / 2);
@@ -686,17 +516,20 @@ export default function ObsidianGraphView({
     const minY = Math.min(...ys),
       maxY = Math.max(...ys);
 
-    // Keep default percentage view locked to 28% (0.28) centered on master network
-    const k = 0.28;
+    // Keep default percentage view locked to 26% (0.26) centered in the open viewport
+    const k = 0.26;
     const midX = (minX + maxX) / 2;
     const midY = (minY + maxY) / 2;
 
+    // Offset for the 390px Right HUD so the master graph is centered in the open canvas area
+    const rightHudOffset = settingsPanelOpen ? 195 : 0;
+
     setTransform({
       k,
-      x: size.w / 2 - midX * k,
+      x: (size.w - rightHudOffset * 2) / 2 - midX * k,
       y: size.h / 2 - midY * k,
     });
-  }, [nodes, size.w, size.h]);
+  }, [nodes, size.w, size.h, settingsPanelOpen]);
 
   const triggerAnimate = () => {
     simRef.current?.alpha(0.8).restart();
@@ -710,13 +543,7 @@ export default function ObsidianGraphView({
     };
   }
 
-  function toDocWorld(clientX: number, clientY: number, svg: SVGSVGElement) {
-    const r = svg.getBoundingClientRect();
-    return {
-      x: (clientX - r.left - docTransform.x) / docTransform.k,
-      y: (clientY - r.top - docTransform.y) / docTransform.k,
-    };
-  }
+
 
   // Focus a single node and show its details in right HUD!
   const focusNode = useCallback(
@@ -772,13 +599,15 @@ export default function ObsidianGraphView({
     return set;
   }, [nodes, searchFiles]);
 
-  // Group real API nodes by Case for the left file explorer
-  const caseFileGroups = useMemo(() => {
+  // Group real API nodes by Case for the left file explorer and progressive FIR build-out
+  const { nodeOrderMap, caseFileGroups, unassignedNodes } = useMemo(() => {
     const map = new Map<string, { summary: ApiCaseSummary; items: SimNode[] }>();
 
     cases.forEach((c) => {
       map.set(c.case_id, { summary: c, items: [] });
     });
+
+    const unassigned: SimNode[] = [];
 
     nodes.forEach((n) => {
       const hubCase = n.id.startsWith("HUB_") ? n.id.replace("HUB_", "") : null;
@@ -791,15 +620,119 @@ export default function ObsidianGraphView({
 
       if (caseId && map.has(String(caseId))) {
         map.get(String(caseId))!.items.push(n);
+      } else {
+        unassigned.push(n);
       }
     });
 
-    return Array.from(map.entries()).map(([cid, data]) => ({
-      caseId: cid,
-      summary: data.summary,
-      items: data.items,
-    }));
+    const orderMap = new Map<string, number>();
+
+    // Sort items within each case: Hub first, then brokers/accused, then entities, then facts
+    const groups = Array.from(map.entries()).map(([cid, data]) => {
+      data.items.sort((a, b) => {
+        const aRank = isHub(a) ? 0 : a.is_broker ? 1 : a.category === "PERSON" ? 2 : a.category === "ORGANIZATION" ? 3 : 4;
+        const bRank = isHub(b) ? 0 : b.is_broker ? 1 : b.category === "PERSON" ? 2 : b.category === "ORGANIZATION" ? 3 : 4;
+        return aRank - bRank;
+      });
+      data.items.forEach((item, idx) => {
+        orderMap.set(item.id, idx);
+      });
+      return {
+        caseId: cid,
+        summary: data.summary,
+        items: data.items,
+      };
+    });
+
+    // Unassigned nodes get sequential order
+    unassigned.forEach((item, idx) => {
+      orderMap.set(item.id, idx);
+    });
+
+    return { nodeOrderMap: orderMap, caseFileGroups: groups, unassignedNodes: unassigned };
   }, [cases, nodes]);
+
+  // ── Fluid One-By-One Case-by-Case FIR Build-Out Timer Controller ──
+  useEffect(() => {
+    if (!isBuildAnimating || !caseFileGroups.length || !nodes.length) return;
+
+    // Clear any previous timers
+    buildAnimTimersRef.current.forEach(clearTimeout);
+    buildAnimTimersRef.current = [];
+
+    const totalCases = caseFileGroups.length;
+
+    // Start with the central root hub breathing in waiting phase
+    setVisibleNodeSet(firstHubId ? new Set([firstHubId]) : new Set());
+    setRevealedCaseCount(0);
+    setBuildPhase("waiting");
+
+    // Brief initial delay before first case begins
+    let accumulatedTime = 220;
+    buildAnimTimersRef.current.push(
+      setTimeout(() => {
+        setBuildPhase("building");
+      }, accumulatedTime)
+    );
+
+    // Schedule progressive case reveals:
+    // Cases 0..4 (initial 5 core cases): 450ms each so user distinctly watches the initial FIR networks & cross-case bridges form dot-by-dot
+    // Cases 5..14: 220ms each
+    // Cases 15..35: 90ms each
+    // Cases 36+: 30ms each (rapid neural stream completing the master constellation)
+    for (let i = 0; i < totalCases; i++) {
+      let stepDelay = 450;
+      if (i >= 36) {
+        stepDelay = 30;
+      } else if (i >= 15) {
+        stepDelay = 90;
+      } else if (i >= 5) {
+        stepDelay = 220;
+      }
+
+      accumulatedTime += stepDelay;
+
+      buildAnimTimersRef.current.push(
+        setTimeout(() => {
+          setRevealedCaseCount(i + 1);
+          // Accumulate visible node IDs up to case i
+          const ids = new Set<string>();
+          for (let j = 0; j <= i; j++) {
+            const cg = caseFileGroups[j];
+            if (cg) cg.items.forEach((n) => ids.add(n.id));
+          }
+          // Include unassigned nodes as the network expands past 50%
+          if (i >= Math.floor(totalCases * 0.5)) {
+            unassignedNodes.forEach((n) => ids.add(n.id));
+          }
+          setVisibleNodeSet(ids);
+        }, accumulatedTime)
+      );
+    }
+
+    // Settle phase
+    accumulatedTime += 350;
+    buildAnimTimersRef.current.push(
+      setTimeout(() => {
+        setBuildPhase("settling");
+      }, accumulatedTime)
+    );
+
+    // Complete: show all nodes (including any remaining orphans)
+    accumulatedTime += 400;
+    buildAnimTimersRef.current.push(
+      setTimeout(() => {
+        setBuildPhase("interactive");
+        setIsBuildAnimating(false);
+        setVisibleNodeSet(null); // null = show everything
+      }, accumulatedTime)
+    );
+
+    return () => {
+      buildAnimTimersRef.current.forEach(clearTimeout);
+      buildAnimTimersRef.current = [];
+    };
+  }, [isBuildAnimating, caseFileGroups, nodes.length, unassignedNodes]);
 
   // Multi-case syndicate entities / central brokers (cleaned, no OCR noise)
   const syndicateBrokers = useMemo(() => {
@@ -861,7 +794,7 @@ export default function ObsidianGraphView({
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#16161a] text-sm font-semibold text-[#a1a1aa] font-sans">
+      <div className="flex h-screen w-screen items-center justify-center bg-panel text-sm font-semibold text-ink-muted font-sans">
         <div className="flex flex-col items-center gap-3">
           <div className="size-8 animate-spin rounded-full border-2 border-[#a855f7] border-t-transparent" />
           <span className="tracking-wide">LOADING CASE DATABASE FROM API…</span>
@@ -872,13 +805,13 @@ export default function ObsidianGraphView({
 
   if (error) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#16161a] p-8 text-center text-sm text-red-400 font-sans">
-        <div className="flex max-w-md flex-col items-center gap-3 rounded-xl border border-red-900/60 bg-red-950/30 p-6 shadow-2xl">
-          <ShieldAlert className="size-8 text-red-400" />
+      <div className="flex h-screen w-screen items-center justify-center bg-panel p-8 text-center text-sm text-alert font-sans">
+        <div className="flex max-w-md flex-col items-center gap-3 rounded-xl border border-alert/40 bg-alert/15 p-6 shadow-2xl">
+          <ShieldAlert className="size-8 text-alert" />
           <p className="font-semibold text-white">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="rounded border border-red-800 bg-red-900/40 px-3 py-1.5 text-xs text-red-200 hover:bg-red-900"
+            className="rounded border border-alert/40 bg-alert/20 px-3 py-1.5 text-xs text-alert hover:bg-alert/40"
           >
             Retry Connection
           </button>
@@ -890,15 +823,15 @@ export default function ObsidianGraphView({
   return (
     <div
       className={`flex h-full w-full flex-col overflow-hidden font-sans select-none transition-colors duration-150 ${
-        isDark ? "bg-[#090a0f] text-zinc-200" : "bg-[#f5f3ec] text-[#1c1d22]"
+        isDark ? "bg-canvas text-zinc-200" : "bg-canvas text-ink"
       }`}
     >
       {/* ── 1. TOP TITLE BAR & OBSIDIAN TABS ────────────────────────────── */}
       <header
         className={`flex h-11 shrink-0 items-center justify-between border-b px-3 transition-colors ${
           isDark
-            ? "border-zinc-800/80 bg-[#0e0f14] text-[#8c8c96]"
-            : "border-[#e8e4da] bg-[#faf8f4] text-[#7a7b83]"
+            ? "border-zinc-800/80 bg-panel-deep text-ink-muted"
+            : "border-line bg-panel-deep text-ink-muted"
         }`}
       >
         {/* Left window actions */}
@@ -907,20 +840,20 @@ export default function ObsidianGraphView({
             onClick={() => setSidebarOpen((s) => !s)}
             title="Toggle Left Sidebar"
             className={`flex size-8 items-center justify-center rounded p-1 transition-colors ${
-              isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"
+              isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"
             }`}
           >
             <div className="size-4 border border-current rounded-sm flex">
               <div className="w-1.5 border-r border-current bg-current" />
             </div>
           </button>
-          <button className={`flex size-8 items-center justify-center rounded transition-colors ${isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"}`}>
+          <button className={`flex size-8 items-center justify-center rounded transition-colors ${isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"}`}>
             <Folder className="size-4" />
           </button>
-          <button className={`flex size-8 items-center justify-center rounded transition-colors ${isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"}`}>
+          <button className={`flex size-8 items-center justify-center rounded transition-colors ${isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"}`}>
             <Search className="size-4" />
           </button>
-          <button className={`flex size-8 items-center justify-center rounded transition-colors ${isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"}`}>
+          <button className={`flex size-8 items-center justify-center rounded transition-colors ${isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"}`}>
             <Bookmark className="size-4" />
           </button>
         </div>
@@ -941,11 +874,11 @@ export default function ObsidianGraphView({
                 className={`group flex items-center gap-2 rounded-t-lg px-4 py-2 cursor-pointer text-xs font-semibold transition-all shrink-0 ${
                   isActive
                     ? isDark
-                      ? "bg-[#222228] text-white shadow-xs"
-                      : "bg-white text-[#1c1d22] shadow-xs border-t border-x border-[#e8e4da]"
+                      ? "bg-panel text-white shadow-xs"
+                      : "bg-white text-ink shadow-xs border-t border-x border-line"
                     : isDark
-                    ? "bg-transparent text-[#8c8c96] hover:bg-[#1c1c22] hover:text-[#d4d4d8]"
-                    : "bg-transparent text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"
+                    ? "bg-transparent text-ink-muted hover:bg-panel-deep hover:text-ink"
+                    : "bg-transparent text-ink-muted hover:bg-raised hover:text-ink"
                 }`}
               >
                 {tab.id === "graph" ? (
@@ -971,7 +904,7 @@ export default function ObsidianGraphView({
             onClick={() => fitView()}
             title="Fit Graph View"
             className={`flex size-8 items-center justify-center rounded shrink-0 transition-colors ${
-              isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"
+              isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"
             }`}
           >
             <Plus className="size-4" />
@@ -980,13 +913,13 @@ export default function ObsidianGraphView({
 
         {/* Right Window Controls */}
         <div className="flex items-center gap-2">
-          <button className={`flex size-8 items-center justify-center transition-colors ${isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"}`}>
+          <button className={`flex size-8 items-center justify-center transition-colors ${isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"}`}>
             <Minus className="size-4" />
           </button>
-          <button className={`flex size-8 items-center justify-center transition-colors ${isDark ? "text-[#8c8c96] hover:bg-[#23232b] hover:text-white" : "text-[#7a7b83] hover:bg-[#ede8dc] hover:text-[#1c1d22]"}`}>
+          <button className={`flex size-8 items-center justify-center transition-colors ${isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"}`}>
             <Square className="size-3.5" />
           </button>
-          <button className="flex size-8 items-center justify-center text-[#8c8c96] hover:bg-rose-900/60 hover:text-white transition-colors">
+          <button className="flex size-8 items-center justify-center text-ink-muted hover:bg-alert/20 hover:text-white transition-colors">
             <X className="size-4" />
           </button>
         </div>
@@ -997,7 +930,7 @@ export default function ObsidianGraphView({
         {/* ── Leftmost Vertical Activity Bar (Ribbon) ── */}
         <div
           className={`flex w-11 shrink-0 flex-col items-center justify-between border-r py-3 transition-colors ${
-            isDark ? "border-[#222227] bg-[#141417] text-[#8c8c96]" : "border-[#e8e4da] bg-[#f4efe4] text-[#7a7b83]"
+            isDark ? "border-line bg-panel-deep text-ink-muted" : "border-line bg-raised text-ink-muted"
           }`}
         >
           <div className="flex flex-col items-center gap-3.5">
@@ -1005,7 +938,7 @@ export default function ObsidianGraphView({
               onClick={() => setSidebarOpen((s) => !s)}
               title="Expand/Collapse Sidebar"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <div className="size-4 border border-current rounded-sm flex">
@@ -1015,7 +948,7 @@ export default function ObsidianGraphView({
             <button
               title="Quick Switcher"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <FileCode className="size-4" />
@@ -1023,7 +956,7 @@ export default function ObsidianGraphView({
             <button
               title="Graph View"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "bg-[#25252e] text-white" : "bg-white text-[#1c1d22] shadow-xs border border-[#ded8cb]"
+                isDark ? "bg-raised text-white" : "bg-white text-ink shadow-xs border border-line-strong"
               }`}
             >
               <Network className="size-4 text-[#a855f7]" />
@@ -1031,7 +964,7 @@ export default function ObsidianGraphView({
             <button
               title="Canvas"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <LayoutGrid className="size-4" />
@@ -1039,7 +972,7 @@ export default function ObsidianGraphView({
             <button
               title="Daily Notes"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <Calendar className="size-4" />
@@ -1047,7 +980,7 @@ export default function ObsidianGraphView({
             <button
               title="Templates"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <Sparkles className="size-4" />
@@ -1058,7 +991,7 @@ export default function ObsidianGraphView({
             <button
               title="Help"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <HelpCircle className="size-4" />
@@ -1066,7 +999,7 @@ export default function ObsidianGraphView({
             <button
               title="Settings"
               className={`flex size-8 items-center justify-center rounded transition-colors ${
-                isDark ? "hover:bg-[#23232b] hover:text-white text-[#8c8c96]" : "hover:bg-[#e4ded0] hover:text-[#1c1d22] text-[#7a7b83]"
+                isDark ? "hover:bg-raised hover:text-white text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
               }`}
             >
               <Settings className="size-4" />
@@ -1079,20 +1012,20 @@ export default function ObsidianGraphView({
           <aside
             className={`flex w-84 xl:w-96 shrink-0 flex-col border-r transition-colors ${
               isDark
-                ? "border-zinc-800/80 bg-[#0c0d12] text-[#a1a1aa]"
-                : "border-[#e8e4da] bg-[#f9f8f4] text-[#4a4b52]"
+                ? "border-zinc-800/80 bg-canvas text-ink-muted"
+                : "border-line bg-panel-deep text-ink-muted"
             }`}
           >
             {/* Action Bar & Quick Search */}
             <div
               className={`flex flex-col border-b p-3.5 gap-2.5 transition-colors ${
-                isDark ? "border-zinc-800/80 text-zinc-400" : "border-[#e8e4da] text-[#7a7b83]"
+                isDark ? "border-zinc-800/80 text-zinc-400" : "border-line text-ink-muted"
               }`}
             >
               <div className="flex items-center justify-between">
                 <span
                   className={`text-xs font-bold uppercase tracking-wider ${
-                    isDark ? "text-white" : "text-[#1c1d22]"
+                    isDark ? "text-white" : "text-ink"
                   }`}
                 >
                   CBI Evidence Vault
@@ -1102,7 +1035,7 @@ export default function ObsidianGraphView({
                     onClick={() => setExpandedFolders({})}
                     title="Collapse All Folders"
                     className={`rounded-md p-1 transition-colors ${
-                      isDark ? "hover:bg-zinc-800 hover:text-white" : "hover:bg-[#ede8dc] hover:text-[#1c1d22]"
+                      isDark ? "hover:bg-zinc-800 hover:text-white" : "hover:bg-raised hover:text-ink"
                     }`}
                   >
                     <ChevronsDownUp className="size-3.5" />
@@ -1117,7 +1050,7 @@ export default function ObsidianGraphView({
                     }}
                     title="Expand All Branches"
                     className={`rounded-md p-1 transition-colors ${
-                      isDark ? "hover:bg-zinc-800 hover:text-white" : "hover:bg-[#ede8dc] hover:text-[#1c1d22]"
+                      isDark ? "hover:bg-zinc-800 hover:text-white" : "hover:bg-raised hover:text-ink"
                     }`}
                   >
                     <FolderOpen className="size-3.5" />
@@ -1129,7 +1062,7 @@ export default function ObsidianGraphView({
               <div className="relative">
                 <Search
                   className={`absolute left-3 top-2.5 size-3.5 ${
-                    isDark ? "text-zinc-400" : "text-[#9e9ea5]"
+                    isDark ? "text-zinc-400" : "text-ink-faint"
                   }`}
                 />
                 <input
@@ -1140,7 +1073,7 @@ export default function ObsidianGraphView({
                   className={`w-full rounded-xl border py-1.5 pl-9 pr-3 text-xs outline-none transition ${
                     isDark
                       ? "border-zinc-800 bg-zinc-900/90 text-white placeholder-zinc-400 focus:border-purple-500/60"
-                      : "border-[#e4dfd3] bg-white text-[#1c1d22] placeholder-[#9e9ea5] focus:border-[#d29b28]"
+                      : "border-line bg-white text-ink placeholder-ink-faint focus:border-accent"
                   }`}
                 />
               </div>
@@ -1148,61 +1081,13 @@ export default function ObsidianGraphView({
 
             {/* Case Hierarchy Tree: Branches -> Cases -> Entities */}
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1 text-xs">
-              {/* Documentation Vault (6.3s Force Graph Files) */}
-              <div className="mb-2">
-                <div
-                  onClick={() => toggleFolder("doc-vault")}
-                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 cursor-pointer font-bold transition-colors ${
-                    isDark ? "text-white hover:bg-[#1e1e24]" : "text-[#1c1d22] hover:bg-[#ede8dc]"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    {expandedFolders["doc-vault"] !== false ? (
-                      <FolderOpen className="size-4 text-amber-500 shrink-0" />
-                    ) : (
-                      <Folder className="size-4 text-amber-500 shrink-0" />
-                    )}
-                    <span className={`truncate text-[12px] ${isDark ? "text-amber-400" : "text-amber-700"}`}>
-                      📂 Documentation Vault (6.3s Build)
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-amber-500 font-mono px-2 py-0.5 rounded bg-amber-500/15">
-                    9 files
-                  </span>
-                </div>
-
-                {expandedFolders["doc-vault"] !== false && (
-                  <div className={`pl-3 space-y-0.5 border-l ml-3.5 mt-1 ${isDark ? "border-[#24242d]" : "border-[#e8e4da]"}`}>
-                    {DOC_NODES.map((d) => {
-                      const isSelected = selectedDocId === d.id && graphMode === "doc-build";
-                      return (
-                        <div
-                          key={d.id}
-                          onClick={() => {
-                            setGraphMode("doc-build");
-                            focusDocNode(d.id);
-                          }}
-                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors ${
-                            isSelected
-                              ? isDark ? "bg-[#25252e] text-amber-400 font-bold" : "bg-amber-100 text-amber-900 font-bold"
-                              : isDark ? "hover:bg-[#1e1e24] text-zinc-300" : "hover:bg-[#ede8dc] text-zinc-700"
-                          }`}
-                        >
-                          <FileText className="size-3.5 text-amber-500/80 shrink-0" />
-                          <span className="truncate text-xs font-mono">{d.filename}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
 
               {/* Master Syndicate Folder (Cleaned) */}
               <div>
                 <div
                   onClick={() => toggleFolder("syndicate")}
                   className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 cursor-pointer font-bold transition-colors ${
-                    isDark ? "text-white hover:bg-[#1e1e24]" : "text-[#1c1d22] hover:bg-[#ede8dc]"
+                    isDark ? "text-white hover:bg-panel" : "text-ink hover:bg-raised"
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
@@ -1211,7 +1096,7 @@ export default function ObsidianGraphView({
                     ) : (
                       <Folder className="size-4 text-[#e5851d] shrink-0" />
                     )}
-                    <span className={`truncate text-[12px] ${isDark ? "text-[#fbbf24]" : "text-[#b87c12]"}`}>
+                    <span className={`truncate text-[12px] ${isDark ? "text-accent" : "text-accent"}`}>
                       ⚡ Cross-Case Syndicates
                     </span>
                   </div>
@@ -1221,9 +1106,9 @@ export default function ObsidianGraphView({
                 </div>
 
                 {expandedFolders["syndicate"] && (
-                  <div className={`pl-3 space-y-1 border-l ml-3.5 mt-1 ${isDark ? "border-[#24242d]" : "border-[#e8e4da]"}`}>
+                  <div className={`pl-3 space-y-1 border-l ml-3.5 mt-1 ${isDark ? "border-line" : "border-line"}`}>
                     {syndicateBrokers.length === 0 ? (
-                      <div className={`text-[11px] p-1 ${isDark ? "text-[#71717a]" : "text-[#8c8c96]"}`}>
+                      <div className={`text-[11px] p-1 ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                         No cross-case brokers found.
                       </div>
                     ) : (
@@ -1235,11 +1120,11 @@ export default function ObsidianGraphView({
                             onClick={() => focusNode(brok.id)}
                             className={`flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-colors ${
                               isSelected
-                                ? isDark ? "bg-[#25252e] text-white font-bold" : "bg-[#202126] text-white font-bold"
-                                : isDark ? "hover:bg-[#1e1e24] hover:text-[#d4d4d8] text-[#d4d4d8]" : "hover:bg-[#ede8dc] hover:text-[#1c1d22] text-[#4a4b52]"
+                                ? isDark ? "bg-raised text-white font-bold" : "bg-charcoal text-white font-bold"
+                                : isDark ? "hover:bg-panel hover:text-ink text-ink" : "hover:bg-raised hover:text-ink text-ink-muted"
                             }`}
                           >
-                            <Flame className="size-3 text-red-400 shrink-0" />
+                            <Flame className="size-3 text-alert shrink-0" />
                             <span className="truncate text-xs font-medium">{brok.label}.md</span>
                           </div>
                         );
@@ -1258,7 +1143,7 @@ export default function ObsidianGraphView({
                     <div
                       onClick={() => toggleFolder(bg.branchName)}
                       className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 cursor-pointer font-semibold transition-colors ${
-                        isDark ? "text-[#e4e4e7] hover:bg-[#1e1e24]" : "text-[#1c1d22] hover:bg-[#ede8dc]"
+                        isDark ? "text-ink hover:bg-panel" : "text-ink hover:bg-raised"
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -1267,7 +1152,7 @@ export default function ObsidianGraphView({
                         ) : (
                           <Folder className="size-4 text-[#a855f7] shrink-0" />
                         )}
-                        <span className={`truncate text-[12px] font-bold ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
+                        <span className={`truncate text-[12px] font-bold ${isDark ? "text-white" : "text-ink"}`}>
                           {bg.branchName}
                         </span>
                       </div>
@@ -1278,7 +1163,7 @@ export default function ObsidianGraphView({
 
                     {/* FIR Cases inside this Branch */}
                     {isBranchOpen && (
-                      <div className={`pl-3 space-y-1 border-l ml-3.5 mt-0.5 ${isDark ? "border-[#24242d]" : "border-[#e8e4da]"}`}>
+                      <div className={`pl-3 space-y-1 border-l ml-3.5 mt-0.5 ${isDark ? "border-line" : "border-line"}`}>
                         {bg.cases.map(({ caseId, summary, items }) => {
                           const isCaseOpen = Boolean(expandedFolders[caseId]);
                           const hubNode = items.find((it) => it.id.startsWith("HUB_"));
@@ -1290,27 +1175,27 @@ export default function ObsidianGraphView({
                                   if (hubNode) focusNode(hubNode.id);
                                 }}
                                 className={`flex items-center justify-between rounded-md px-2 py-1 cursor-pointer transition-colors ${
-                                  isDark ? "text-[#d4d4d8] hover:bg-[#1f1f27]" : "text-[#3a3b42] hover:bg-[#ede8dc]"
+                                  isDark ? "text-ink hover:bg-panel" : "text-ink-muted hover:bg-raised"
                                 }`}
                               >
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   {isCaseOpen ? (
-                                    <FolderOpen className="size-3.5 text-[#c084fc] shrink-0" />
+                                    <FolderOpen className="size-3.5 text-alert shrink-0" />
                                   ) : (
-                                    <FileText className="size-3.5 text-[#c084fc] shrink-0" />
+                                    <FileText className="size-3.5 text-alert shrink-0" />
                                   )}
-                                  <span className={`truncate text-[11px] font-semibold ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
+                                  <span className={`truncate text-[11px] font-semibold ${isDark ? "text-white" : "text-ink"}`}>
                                     FIR {summary.fir_number}
                                   </span>
                                 </div>
-                                <span className={`text-[9px] font-mono ${isDark ? "text-[#71717a]" : "text-[#8c8c96]"}`}>
+                                <span className={`text-[9px] font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                   {items.length} nodes
                                 </span>
                               </div>
 
                               {/* Entities inside Case */}
                               {isCaseOpen && (
-                                <div className={`pl-3 space-y-0.5 border-l ml-2 mt-0.5 ${isDark ? "border-[#2e2e38]" : "border-[#e8e4da]"}`}>
+                                <div className={`pl-3 space-y-0.5 border-l ml-2 mt-0.5 ${isDark ? "border-line" : "border-line"}`}>
                                   {items.slice(0, 15).map((doc) => {
                                     const isSelected = selectedNodeId === doc.id;
                                     return (
@@ -1319,8 +1204,8 @@ export default function ObsidianGraphView({
                                         onClick={() => focusNode(doc.id)}
                                         className={`flex items-center gap-1.5 rounded px-2 py-1 cursor-pointer transition-colors ${
                                           isSelected
-                                            ? isDark ? "bg-[#25252e] text-white font-bold" : "bg-[#202126] text-white font-bold"
-                                            : isDark ? "hover:bg-[#1e1e24] hover:text-[#d4d4d8] text-[#a1a1aa]" : "hover:bg-[#ede8dc] hover:text-[#1c1d22] text-[#4b4c55]"
+                                            ? isDark ? "bg-raised text-white font-bold" : "bg-charcoal text-white font-bold"
+                                            : isDark ? "hover:bg-panel hover:text-ink text-ink-muted" : "hover:bg-raised hover:text-ink text-ink-muted"
                                         }`}
                                       >
                                         <div
@@ -1332,7 +1217,7 @@ export default function ObsidianGraphView({
                                     );
                                   })}
                                   {items.length > 15 && (
-                                    <div className={`px-2 py-0.5 text-[10px] font-mono italic ${isDark ? "text-[#71717a]" : "text-[#8c8c96]"}`}>
+                                    <div className={`px-2 py-0.5 text-[10px] font-mono italic ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                       + {items.length - 15} more entities
                                     </div>
                                   )}
@@ -1351,26 +1236,26 @@ export default function ObsidianGraphView({
             {/* Vault Footer with 500 Ingested Files */}
             <div
               className={`flex h-11 items-center justify-between border-t px-3 text-xs transition-colors ${
-                isDark ? "border-[#222228] bg-[#0c0d12] text-[#8c8c96]" : "border-[#e8e4da] bg-[#f9f8f4] text-[#7a7b83]"
+                isDark ? "border-line bg-canvas text-ink-muted" : "border-line bg-panel-deep text-ink-muted"
               }`}
             >
               <div
                 onClick={() => fitView()}
                 title="NyayaGraph Live API Case Vault"
                 className={`flex items-center gap-2 cursor-pointer transition-colors ${
-                  isDark ? "hover:text-white" : "hover:text-[#1c1d22]"
+                  isDark ? "hover:text-white" : "hover:text-ink"
                 }`}
               >
-                <Shield className="size-4 text-emerald-500" />
-                <span className={`truncate font-bold text-xs ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
+                <Shield className="size-4 text-verified" />
+                <span className={`truncate font-bold text-xs ${isDark ? "text-white" : "text-ink"}`}>
                   Nyaya_Case_Vault
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-mono font-semibold ${isDark ? "text-[#f5b838]" : "text-[#b87c12]"}`}>
+                <span className={`text-xs font-mono font-semibold ${isDark ? "text-accent" : "text-accent"}`}>
                   500 Ingested Files
                 </span>
-                <Settings className={`size-4 cursor-pointer transition-colors ${isDark ? "hover:text-white" : "hover:text-[#1c1d22]"}`} />
+                <Settings className={`size-4 cursor-pointer transition-colors ${isDark ? "hover:text-white" : "hover:text-ink"}`} />
               </div>
             </div>
           </aside>
@@ -1379,80 +1264,49 @@ export default function ObsidianGraphView({
         {/* ── Main View Area (Inner Header + Graph Canvas) ── */}
         <div
           className={`flex flex-1 flex-col overflow-hidden p-2.5 transition-colors ${
-            isDark ? "bg-[#16161a]" : "bg-[#f0ece2]"
+            isDark ? "bg-panel" : "bg-panel"
           }`}
         >
           {/* Inner Header Bar */}
           <div
             className={`flex h-9 shrink-0 items-center justify-between px-2 text-xs ${
-              isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"
+              isDark ? "text-ink-muted" : "text-ink-muted"
             }`}
           >
             <div className="flex items-center gap-2">
               <button
                 onClick={() => fitView()}
                 title="Fit to Screen"
-                className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-[#1c1d22]"}`}
+                className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-ink"}`}
               >
                 <ChevronLeft className="size-4" />
               </button>
               <button
                 title="Forward"
-                className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-[#1c1d22]"}`}
+                className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-ink"}`}
               >
                 <ChevronRight className="size-4" />
               </button>
             </div>
-            {/* Mode Switcher Buttons */}
-            <div
-              className={`flex items-center gap-1 rounded-lg border p-0.5 transition-colors ${
-                isDark ? "border-[#2a2c38] bg-[#14151c]" : "border-[#e5e0d5] bg-[#ede8dc]"
-              }`}
-            >
-              <button
-                onClick={() => {
-                  setGraphMode("doc-build");
-                  replayDocAnimation();
-                }}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
-                  graphMode === "doc-build"
-                    ? isDark
-                      ? "bg-amber-500 text-black shadow-xs"
-                      : "bg-amber-600 text-white shadow-xs"
-                    : isDark
-                    ? "text-[#8c90a2] hover:text-white"
-                    : "text-[#65666e] hover:text-[#1c1d22]"
-                }`}
-              >
-                <Play className="size-3 fill-current" />
-                <span>6.3s Doc Build-Out (Demo Video)</span>
-              </button>
-              <button
-                onClick={() => {
-                  setGraphMode("cbi-syndicate");
-                  setTimeout(() => fitView(), 50);
-                }}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
-                  graphMode === "cbi-syndicate"
-                    ? isDark
-                      ? "bg-purple-600 text-white shadow-xs"
-                      : "bg-purple-700 text-white shadow-xs"
-                    : isDark
-                    ? "text-[#8c90a2] hover:text-white"
-                    : "text-[#65666e] hover:text-[#1c1d22]"
-                }`}
-              >
-                <Network className="size-3" />
-                <span>CBI Case Syndicate (500 Files • 2,744 Nodes)</span>
-              </button>
+            {/* Case Graph Title */}
+            <div className="flex items-center gap-2">
+              <Network className="size-3.5 text-purple-500" />
+              <span className={`text-xs font-bold ${isDark ? "text-ink" : "text-ink-muted"}`}>
+                CBI Case Syndicate • {caseFileGroups.length} FIRs • {nodes.length.toLocaleString()} Nodes
+              </span>
+              {isBuildAnimating && (
+                <span className={`text-[11px] font-mono ${isDark ? "text-accent" : "text-accent"}`}>
+                  Building {revealedCaseCount}/{caseFileGroups.length}
+                </span>
+              )}
             </div>
 
             <button
               onClick={() => replayAnimation()}
-              title="Replay sequence"
-              className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-[#1c1d22]"}`}
+              title="Replay case-by-case build animation"
+              className={`p-1 transition-colors ${isDark ? "hover:text-white" : "hover:text-ink"}`}
             >
-              <RotateCcw className="size-4 text-amber-500" />
+              <RotateCcw className="size-4 text-accent" />
             </button>
           </div>
 
@@ -1460,37 +1314,40 @@ export default function ObsidianGraphView({
           <div
             ref={wrapRef}
             className={`relative flex-1 overflow-hidden rounded-2xl border transition-colors ${
-              isDark ? "border-[#1c1d24] bg-[#08090c]" : "border-[#e8e4da] bg-[#f5f3ec]"
+              isDark ? "border-line bg-canvas" : "border-line bg-canvas"
             }`}
           >
-            {/* 6.3-Second Cinematic Doc Build-Out Live Status Banner */}
-            {graphMode === "doc-build" && isPlaying6s && (
+            {/* Case-by-Case FIR Build Progress Banner */}
+            {isBuildAnimating && (
               <div
                 className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-xl backdrop-blur-md transition-all ${
                   isDark
-                    ? "border-amber-500/30 bg-[#0e0e12]/95 text-amber-400"
-                    : "border-amber-500/30 bg-white/95 text-amber-800"
+                    ? "border-purple-500/40 bg-panel-deep/95 text-purple-300"
+                    : "border-purple-500/30 bg-white/95 text-purple-800"
                 }`}
               >
                 <span className="relative flex size-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                  <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-purple-500" />
                 </span>
                 <span>
-                  {docPhase === "idle"
-                    ? "0.0–0.6s • Root Node 'index' Breathing (Idle)..."
-                    : docPhase === "spawning"
-                    ? `0.6–5.5s • Spawning Node ${docStep}/8: ${DOC_NODES[docStep]?.label}`
-                    : docPhase === "settling"
-                    ? "5.5–6.0s • Settle into Resting Layout..."
-                    : "6.0–6.3s • Cursor Entering (Interactive Preview)"}
+                  {buildPhase === "waiting"
+                    ? "Initializing Case Network..."
+                    : buildPhase === "building"
+                    ? `Building FIR ${revealedCaseCount}/${caseFileGroups.length}: ${caseFileGroups[revealedCaseCount - 1]?.summary?.fir_number || "..."}`
+                    : buildPhase === "settling"
+                    ? "Settling Force Layout..."
+                    : "Interactive"}
+                </span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${isDark ? "bg-purple-950/60 text-purple-300" : "bg-purple-100 text-purple-900"}`}>
+                  {Math.round((revealedCaseCount / Math.max(1, caseFileGroups.length)) * 100)}%
                 </span>
                 <button
-                  onClick={skipDocAnimation}
+                  onClick={skipAnimation}
                   className={`ml-1 rounded px-2 py-0.5 text-[11px] font-bold transition-colors ${
                     isDark
-                      ? "bg-amber-500/20 hover:bg-amber-500/30 text-amber-300"
-                      : "bg-amber-100 hover:bg-amber-200 text-amber-900"
+                      ? "bg-purple-500/20 hover:bg-purple-500/30 text-purple-300"
+                      : "bg-purple-100 hover:bg-purple-200 text-purple-900"
                   }`}
                 >
                   Skip
@@ -1498,9 +1355,9 @@ export default function ObsidianGraphView({
               </div>
             )}
 
-            {/* Ultra-Fluid Organic Animation Styles for Node Pop-in, Idle Breathing & Edge Connect */}
+            {/* Node Fluid Pop-in & Edge Draw-in Animation Styles */}
             <style>{`
-              @keyframes docIdlePulse {
+              @keyframes nodeIdlePulse {
                 0%, 100% {
                   transform: scale(1);
                   opacity: 0.85;
@@ -1510,33 +1367,43 @@ export default function ObsidianGraphView({
                   opacity: 1;
                 }
               }
-              @keyframes docNodePop {
+              @keyframes nodeFluidPopIn {
                 0% {
                   transform: scale(0);
                   opacity: 0;
                 }
-                65% {
-                  transform: scale(1.12);
-                  opacity: 0.95;
+                60% {
+                  transform: scale(1.24);
+                  opacity: 1;
+                }
+                85% {
+                  transform: scale(0.92);
                 }
                 100% {
                   transform: scale(1);
                   opacity: 1;
                 }
               }
-              .doc-node-pulse {
-                animation: docIdlePulse 1.4s ease-in-out infinite;
-                transform-origin: 0 0;
+              @keyframes edgeDrawIn {
+                0% {
+                  opacity: 0;
+                }
+                100% {
+                  opacity: 1;
+                }
               }
-              .doc-node-entrance {
-                animation: docNodePop 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
-                transform-origin: 0 0;
+              .node-idle-breathing {
+                animation: nodeIdlePulse 1.4s ease-in-out infinite;
+                transform-box: fill-box;
+                transform-origin: center center;
               }
-              .doc-graph-edge {
-                transition: x1 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-                            y1 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-                            x2 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-                            y2 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+              .node-pop {
+                animation: nodeFluidPopIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
+                transform-box: fill-box;
+                transform-origin: center center;
+              }
+              .edge-connect {
+                animation: edgeDrawIn 0.35s ease-out both;
               }
             `}</style>
 
@@ -1549,21 +1416,12 @@ export default function ObsidianGraphView({
                 const r = e.currentTarget.getBoundingClientRect();
                 const mx = e.clientX - r.left;
                 const my = e.clientY - r.top;
-                if (graphMode === "doc-build") {
-                  const k2 = Math.min(3.5, Math.max(0.3, docTransform.k * Math.exp(-e.deltaY * 0.0015)));
-                  setDocTransform({
-                    k: k2,
-                    x: mx - ((mx - docTransform.x) / docTransform.k) * k2,
-                    y: my - ((my - docTransform.y) / docTransform.k) * k2,
-                  });
-                } else {
-                  const k2 = Math.min(4.0, Math.max(0.10, transform.k * Math.exp(-e.deltaY * 0.0015)));
-                  setTransform({
-                    k: k2,
-                    x: mx - ((mx - transform.x) / transform.k) * k2,
-                    y: my - ((my - transform.y) / transform.k) * k2,
-                  });
-                }
+                const k2 = Math.min(4.0, Math.max(0.10, transform.k * Math.exp(-e.deltaY * 0.0015)));
+                setTransform({
+                  k: k2,
+                  x: mx - ((mx - transform.x) / transform.k) * k2,
+                  y: my - ((my - transform.y) / transform.k) * k2,
+                });
               }}
               onPointerDown={(e) => {
                 if (
@@ -1575,32 +1433,14 @@ export default function ObsidianGraphView({
                 panRef.current = {
                   sx: e.clientX,
                   sy: e.clientY,
-                  ox: graphMode === "doc-build" ? docTransform.x : transform.x,
-                  oy: graphMode === "doc-build" ? docTransform.y : transform.y,
+                  ox: transform.x,
+                  oy: transform.y,
                 };
                 e.currentTarget.setPointerCapture(e.pointerId);
               }}
               onPointerMove={(e) => {
                 if (dragRef.current) {
                   const dragId = dragRef.current.id;
-                  if (dragId.startsWith("doc_")) {
-                    const docId = dragId.replace("doc_", "");
-                    if (pointerDownPosRef.current) {
-                      const dx = e.clientX - pointerDownPosRef.current.x;
-                      const dy = e.clientY - pointerDownPosRef.current.y;
-                      if (Math.hypot(dx, dy) > 4) {
-                        didDragNodeRef.current = true;
-                      }
-                    }
-                    if (didDragNodeRef.current) {
-                      const p = toDocWorld(e.clientX, e.clientY, e.currentTarget);
-                      setDraggedDocNodes((prev) => ({
-                        ...prev,
-                        [docId]: { x: p.x, y: p.y },
-                      }));
-                    }
-                    return;
-                  }
                   const n = nodes.find((node) => node.id === dragId);
                   if (n) {
                     if (pointerDownPosRef.current) {
@@ -1625,31 +1465,11 @@ export default function ObsidianGraphView({
                   const { ox, oy, sx, sy } = panRef.current;
                   const nx = ox + (e.clientX - sx);
                   const ny = oy + (e.clientY - sy);
-                  if (graphMode === "doc-build") {
-                    setDocTransform((t) => ({ ...t, x: nx, y: ny }));
-                  } else {
-                    setTransform((t) => ({ ...t, x: nx, y: ny }));
-                  }
+                  setTransform((t) => ({ ...t, x: nx, y: ny }));
                 }
               }}
               onPointerUp={(e) => {
-                if (dragRef.current && dragRef.current.id.startsWith("doc_")) {
-                  const docId = dragRef.current.id.replace("doc_", "");
-                  if (!didDragNodeRef.current) {
-                    focusDocNode(docId);
-                  }
-                  dragRef.current = null;
-                  pointerDownPosRef.current = null;
-                  didDragNodeRef.current = false;
-                  try {
-                    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                      e.currentTarget.releasePointerCapture(e.pointerId);
-                    }
-                  } catch {}
-                  return;
-                }
                 if (dragRef.current && !didDragNodeRef.current) {
-                  // Mouse released without drag movement -> Definitive click!
                   focusNode(dragRef.current.id);
                 }
                 dragRef.current = null;
@@ -1664,23 +1484,6 @@ export default function ObsidianGraphView({
               }}
             >
               <defs>
-                {/* 6.3s Doc Build-Out Directed Arrowhead Marker */}
-                <marker
-                  id="doc-arrow-marker"
-                  viewBox="0 0 10 10"
-                  refX="17"
-                  refY="5"
-                  markerWidth="6"
-                  markerHeight="6"
-                  orient="auto-start-reverse"
-                >
-                  <path
-                    d="M 0 2 L 7 5 L 0 8"
-                    fill={isDark ? "#71717a" : "#64748b"}
-                    stroke={isDark ? "#71717a" : "#64748b"}
-                    strokeWidth="1.2"
-                  />
-                </marker>
                 {/* Directed Edge Arrowhead (Default Sharp) */}
                 <marker
                   id="obs-arrow-exact"
@@ -1734,142 +1537,8 @@ export default function ObsidianGraphView({
                 </marker>
               </defs>
 
-              {graphMode === "doc-build" ? (
-                <g transform={`translate(${docTransform.x},${docTransform.y}) scale(${docTransform.k})`}>
-                  {/* ── 6.3s Doc Build-Out Directed Edges ── */}
-                  {visibleDocEdges.map((e) => {
-                    const p1 = getDocNodePos(e.source);
-                    const p2 = getDocNodePos(e.target);
-                    const isHighlighted = selectedDocId === e.source || selectedDocId === e.target;
-                    return (
-                      <line
-                        key={e.id}
-                        x1={p1.x}
-                        y1={p1.y}
-                        x2={p2.x}
-                        y2={p2.y}
-                        stroke={isHighlighted ? (isDark ? "#38bdf8" : "#0284c7") : (isDark ? "#52525b" : "#94a3b8")}
-                        strokeWidth={isHighlighted ? 1.8 : 1.2}
-                        strokeOpacity={isDark ? (isHighlighted ? 0.95 : 0.65) : (isHighlighted ? 0.95 : 0.75)}
-                        className="doc-graph-edge"
-                        markerEnd="url(#doc-arrow-marker)"
-                      />
-                    );
-                  })}
-
-                  {/* ── 6.3s Doc Build-Out Solid Light-Gray Nodes ── */}
-                  {visibleDocNodes.map((n) => {
-                    const pos = getDocNodePos(n.id);
-                    const isRoot = n.id === "index";
-                    const isSelected = selectedDocId === n.id;
-                    const isHovered = hoverDocId === n.id;
-                    const r = isRoot ? 11 : 9; // ~8-10px radius per spec
-
-                    return (
-                      <g
-                        key={n.id}
-                        className="cursor-pointer"
-                        style={{
-                          transform: `translate(${pos.x}px, ${pos.y}px)`,
-                          transition: docPhase === "interactive" && dragRef.current ? "none" : "transform 0.55s cubic-bezier(0.22, 1, 0.36, 1)",
-                        }}
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          if (docPhase !== "interactive") return;
-                          dragRef.current = { id: `doc_${n.id}` };
-                          didDragNodeRef.current = false;
-                          pointerDownPosRef.current = { id: n.id, x: e.clientX, y: e.clientY, time: Date.now() };
-                          try {
-                            (e.target as Element).setPointerCapture?.(e.pointerId);
-                          } catch {}
-                        }}
-                        onPointerEnter={() => setHoverDocId(n.id)}
-                        onPointerLeave={() => setHoverDocId(null)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          focusDocNode(n.id);
-                        }}
-                      >
-                        {/* Inner group with scale pop-in or idle pulse around local (0, 0) */}
-                        <g className={isRoot && docPhase === "idle" ? "doc-node-pulse" : "doc-node-entrance"}>
-                          {/* Transparent hit area for effortless clicking */}
-                          <circle cx={0} cy={0} r={r + 14} fill="transparent" />
-
-                          {/* Selection or Hover highlight ring */}
-                          {(isSelected || isHovered) && (
-                            <circle
-                              cx={0}
-                              cy={0}
-                              r={r + 6}
-                              fill="none"
-                              stroke={isSelected ? "#e5851d" : isDark ? "#38bdf8" : "#0284c7"}
-                              strokeWidth={1.5}
-                              strokeOpacity={0.85}
-                            />
-                          )}
-
-                          {/* Solid Light-Gray Node Circle (~8–10px radius per spec) */}
-                          <circle
-                            cx={0}
-                            cy={0}
-                            r={r}
-                            fill={
-                              isSelected
-                                ? "#ffffff"
-                                : isHovered
-                                ? isDark ? "#e2e8f0" : "#334155"
-                                : isDark ? "#cbd5e1" : "#475569"
-                            }
-                            stroke={isDark ? "#1e293b" : "#f1f5f9"}
-                            strokeWidth={1.5}
-                          />
-
-                          {/* Label directly below each node in light-gray sans-serif text */}
-                          <g className="pointer-events-none select-none">
-                            <text
-                              x={0}
-                              y={r + 16}
-                              textAnchor="middle"
-                              fill={
-                                isSelected
-                                  ? (isDark ? "#ffffff" : "#0f172a")
-                                  : isHovered
-                                  ? (isDark ? "#38bdf8" : "#0284c7")
-                                  : (isDark ? "#94a3b8" : "#475569")
-                              }
-                              fontFamily="Inter, -apple-system, BlinkMacSystemFont, sans-serif"
-                              fontSize={isRoot ? 12 : 11}
-                              fontWeight={isSelected || isRoot ? 600 : 500}
-                            >
-                              {n.label}
-                            </text>
-                          </g>
-                        </g>
-                      </g>
-                    );
-                  })}
-
-                  {/* Animated Mouse Cursor in 6.0-6.3s window */}
-                  {cursorVisible && (
-                    <g
-                      className="pointer-events-none"
-                      style={{
-                        transform: `translate(${cursorPos.x}px, ${cursorPos.y}px)`,
-                        opacity: cursorOpacity,
-                        transition: "transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease",
-                      }}
-                    >
-                      <path
-                        d="M 0 0 L 0 16 L 4.5 12.5 L 8 19.5 L 10.5 18 L 7 11.5 L 12.5 11.5 Z"
-                        fill="#ffffff"
-                        stroke="#08090c"
-                        strokeWidth="1.5"
-                      />
-                    </g>
-                  )}
-                </g>
-              ) : (
-                <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
+              {/* ── CBI Case Syndicate Graph ── */}
+              <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
                 {/* ── Directed Links from API (Progressively Revealed) ── */}
                 {visibleLinks.map((l, idx) => {
                   const s = l.source as SimNode;
@@ -1881,6 +1550,10 @@ export default function ObsidianGraphView({
                   const isBridge = l.edge.source_type === "CROSS_CASE";
                   const isConnectedToSelected =
                     selectedNodeId && (s.id === selectedNodeId || t.id === selectedNodeId);
+
+                  // Stagger delay based on node order in case
+                  const edgeOrder = Math.max(nodeOrderMap.get(s.id) ?? 0, nodeOrderMap.get(t.id) ?? 0);
+                  const edgeDelay = isBuildAnimating ? Math.min(edgeOrder * 28, 500) : 0;
 
                   // High-contrast edge styling: Slate-500/600 (#64748b) & rich amber (#d97706) in light mode
                   let strokeColor = isBridge
@@ -1912,9 +1585,12 @@ export default function ObsidianGraphView({
                       strokeWidth={strokeWidth}
                       strokeOpacity={strokeOpacity}
                       strokeDasharray={isBridge ? "5 3" : undefined}
-                      className="edge-connect"
+                      className={isBuildAnimating ? "edge-connect" : undefined}
+                      style={{
+                        animationDelay: isBuildAnimating ? `${edgeDelay}ms` : undefined,
+                      }}
                       markerEnd={
-                        arrows && (transform.k > 0.55 || isConnectedToSelected || isBridge)
+                        arrows && (isBridge || isConnectedToSelected || (transform.k > 0.65 && !isBuildAnimating))
                           ? isConnectedToSelected
                             ? "url(#obs-arrow-selected)"
                             : isBridge
@@ -1934,6 +1610,8 @@ export default function ObsidianGraphView({
                   const isHovered = hoverNodeId === n.id;
                   const isSelected = selectedNodeId === n.id;
                   const isNodeHub = isHub(n);
+                  const order = nodeOrderMap.get(n.id) ?? 0;
+                  const popDelay = isBuildAnimating ? Math.min(order * 28, 500) : 0;
 
                   // Comfortable node radii
                   const r = (isNodeHub ? 20 : n.is_broker ? 16 : n.category === "FACT" ? 13 : 11) * nodeSize;
@@ -1947,16 +1625,13 @@ export default function ObsidianGraphView({
                     : 0.15;
                   const circleColor = isSelected ? "#ffffff" : getNodeColor(n);
 
-                  // Root node check for CBI syndicate graph
-                  const isRootInIdle = false;
                   const isInteractive = isSelected || isHovered;
-                  const isHighPriority = isNodeHub || Boolean(n.is_broker);
                   const showText =
                     isInteractive ||
                     labelMode === "all" ||
-                    (labelMode === "hubs" && isHighPriority) ||
-                    (labelMode === "smart" && (isHighPriority ? transform.k > 0.22 : transform.k > 0.85));
-                  const shouldShowText = isRootInIdle || showText;
+                    (labelMode === "hubs" && isNodeHub) ||
+                    (labelMode === "smart" &&
+                      (isNodeHub ? transform.k > 0.20 : n.is_broker ? transform.k > 0.45 : transform.k > 0.85));
 
                   const handleNodePointerDown = (e: React.PointerEvent) => {
                     e.stopPropagation();
@@ -1992,6 +1667,8 @@ export default function ObsidianGraphView({
                     focusNode(n.id);
                   };
 
+                  const isRootInIdle = buildPhase === "waiting" && n.id === firstHubId;
+
                   return (
                     <g
                       key={n.id}
@@ -2005,9 +1682,11 @@ export default function ObsidianGraphView({
                         }
                         focusNode(n.id);
                       }}
-                      className={`cursor-pointer ${isRootInIdle ? "node-idle-breathing" : "node-pop"}`}
+                      className={`cursor-pointer ${isRootInIdle ? "node-idle-breathing" : isBuildAnimating ? "node-pop" : ""}`}
                       style={{
-                        transformOrigin: `${n.x}px ${n.y}px`,
+                        animationDelay: isBuildAnimating && !isRootInIdle ? `${popDelay}ms` : undefined,
+                        transformBox: "fill-box",
+                        transformOrigin: "center center",
                       }}
                     >
                       {/* Transparent hit area for effortless clicking */}
@@ -2076,7 +1755,7 @@ export default function ObsidianGraphView({
                       />
 
                       {/* Clean Text Label with backdrop pill & truncation */}
-                      {shouldShowText && (() => {
+                      {showText && (() => {
                         const lbl = n.label || "";
                         const truncated = lbl.length > 22 ? `${lbl.slice(0, 21)}…` : lbl;
                         return (
@@ -2111,84 +1790,63 @@ export default function ObsidianGraphView({
                   );
                 })}
               </g>
-            )}
           </svg>
 
             {/* ── On-Screen Zoom Controls HUD (Bottom Left) ── */}
             <div
               className={`absolute bottom-4 left-4 z-20 flex items-center gap-1.5 rounded-xl border p-1 text-xs shadow-xl backdrop-blur-md transition-colors ${
                 isDark
-                  ? "border-[#26262e] bg-[#141418]/95 text-[#d4d4d8]"
-                  : "border-[#e8e4da] bg-white/95 text-[#1c1d22]"
+                  ? "border-line bg-panel-deep/95 text-ink"
+                  : "border-line bg-white/95 text-ink"
               }`}
             >
               <button
                 onClick={() => {
-                  if (graphMode === "doc-build") {
-                    setDocTransform((t) => ({ ...t, k: Math.min(3.5, t.k * 1.25) }));
-                  } else {
-                    setTransform((t) => ({ ...t, k: Math.min(4.0, t.k * 1.25) }));
-                  }
+                  setTransform((t) => ({ ...t, k: Math.min(4.0, t.k * 1.25) }));
                 }}
                 title="Zoom In"
                 className={`flex size-7 items-center justify-center rounded transition-colors ${
-                  isDark ? "hover:bg-[#25252e] hover:text-white text-[#d4d4d8]" : "hover:bg-[#f4efe4] hover:text-[#1c1d22] text-[#4a4b52]"
+                  isDark ? "hover:bg-raised hover:text-white text-ink" : "hover:bg-raised hover:text-ink text-ink-muted"
                 }`}
               >
                 <ZoomIn className="size-4" />
               </button>
               <button
                 onClick={() => {
-                  if (graphMode === "doc-build") {
-                    setDocTransform((t) => ({ ...t, k: Math.max(0.3, t.k / 1.25) }));
-                  } else {
-                    setTransform((t) => ({ ...t, k: Math.max(0.10, t.k / 1.25) }));
-                  }
+                  setTransform((t) => ({ ...t, k: Math.max(0.10, t.k / 1.25) }));
                 }}
                 title="Zoom Out"
                 className={`flex size-7 items-center justify-center rounded transition-colors ${
-                  isDark ? "hover:bg-[#25252e] hover:text-white text-[#d4d4d8]" : "hover:bg-[#f4efe4] hover:text-[#1c1d22] text-[#4a4b52]"
+                  isDark ? "hover:bg-raised hover:text-white text-ink" : "hover:bg-raised hover:text-ink text-ink-muted"
                 }`}
               >
                 <ZoomOut className="size-4" />
               </button>
-              <div className={`h-4 w-px ${isDark ? "bg-[#26262e]" : "bg-[#e8e4da]"}`} />
+              <div className={`h-4 w-px ${isDark ? "bg-line" : "bg-line"}`} />
               <button
-                onClick={() => {
-                  if (graphMode === "doc-build") {
-                    setDocTransform({ x: 0, y: 0, k: 1.0 });
-                  } else {
-                    fitView();
-                  }
-                }}
-                title={graphMode === "doc-build" ? "Reset to 100% Zoom" : "Fit Graph to Screen (Default 28% [25-30% range])"}
+                onClick={() => fitView()}
+                title="Fit Graph to Screen (Default 26%)"
                 className={`flex items-center gap-1 rounded px-2 py-1 font-semibold transition-colors ${
-                  isDark ? "hover:bg-[#25252e] hover:text-white text-[#d4d4d8]" : "hover:bg-[#f4efe4] hover:text-[#1c1d22] text-[#1c1d22]"
+                  isDark ? "hover:bg-raised hover:text-white text-ink" : "hover:bg-raised hover:text-ink text-ink"
                 }`}
               >
                 <Maximize2 className="size-3.5" />
-                <span>{graphMode === "doc-build" ? "Fit 100%" : "Fit 28%"}</span>
+                <span>Fit 26%</span>
               </button>
               <button
-                onClick={() => {
-                  if (graphMode === "doc-build") {
-                    setDocTransform({ x: 0, y: 0, k: 1.0 });
-                  } else {
-                    fitView();
-                  }
-                }}
-                title={graphMode === "doc-build" ? "Reset to 100% Zoom" : "Reset to Default 28% Zoom"}
+                onClick={() => fitView()}
+                title="Reset to Default 26% Zoom"
                 className={`rounded px-2 py-1 font-mono text-[11px] transition-colors ${
-                  isDark ? "text-[#8c8c96] hover:bg-[#25252e] hover:text-white" : "text-[#7a7b83] hover:bg-[#f4efe4] hover:text-[#1c1d22]"
+                  isDark ? "text-ink-muted hover:bg-raised hover:text-white" : "text-ink-muted hover:bg-raised hover:text-ink"
                 }`}
               >
-                {Math.round((graphMode === "doc-build" ? docTransform.k : transform.k) * 100)}%
+                {Math.round(transform.k * 100)}%
               </button>
-              <div className={`h-4 w-px ${isDark ? "bg-zinc-800" : "bg-[#e8e4da]"}`} />
+              <div className={`h-4 w-px ${isDark ? "bg-zinc-800" : "bg-line"}`} />
               {/* Label Density Mode Selector */}
               <div
                 className={`flex items-center rounded-lg p-0.5 border transition-colors ${
-                  isDark ? "bg-zinc-950/80 border-zinc-800" : "bg-[#f4efe4] border-[#e8e4da]"
+                  isDark ? "bg-zinc-950/80 border-zinc-800" : "bg-raised border-line"
                 }`}
               >
                 {(["smart", "hubs", "all"] as const).map((mode) => (
@@ -2200,7 +1858,7 @@ export default function ObsidianGraphView({
                         ? "bg-purple-600 text-white shadow-xs"
                         : isDark
                         ? "text-zinc-400 hover:text-white"
-                        : "text-[#7a7b83] hover:text-[#1c1d22]"
+                        : "text-ink-muted hover:text-ink"
                     }`}
                     title={`Label Density: ${mode.toUpperCase()} (LOD)`}
                   >
@@ -2209,56 +1867,41 @@ export default function ObsidianGraphView({
                 ))}
               </div>
 
-              {/* 6.3s Cinematic Sequence Controller in Bottom HUD */}
-              <div className={`h-4 w-px ${isDark ? "bg-[#26262e]" : "bg-[#e8e4da]"}`} />
-              {graphMode === "doc-build" ? (
-                isPlaying6s ? (
-                  <div className="flex items-center gap-1.5 px-1.5 py-0.5">
-                    <span className="relative flex size-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                      <span className="relative inline-flex size-2 rounded-full bg-amber-500" />
-                    </span>
-                    <span className={`text-[11px] font-mono font-bold ${isDark ? "text-amber-400" : "text-amber-700"}`}>
-                      {docPhase === "idle" ? "0.0s Idle" : `Step ${docStep}/8`}
-                    </span>
-                    <button
-                      onClick={skipDocAnimation}
-                      title="Skip sequence to fully interactive view"
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
-                        isDark
-                          ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
-                          : "bg-amber-100 text-amber-800 hover:bg-amber-200"
-                      }`}
-                    >
-                      Skip
-                    </button>
-                  </div>
-                ) : (
+              {/* Build Animation / Fit Controls */}
+              <div className={`h-4 w-px ${isDark ? "bg-line" : "bg-line"}`} />
+              {isBuildAnimating ? (
+                <div className="flex items-center gap-1.5 px-1.5 py-0.5">
+                  <span className="relative flex size-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75" />
+                    <span className="relative inline-flex size-2 rounded-full bg-purple-500" />
+                  </span>
+                  <span className={`text-[11px] font-mono font-bold ${isDark ? "text-purple-400" : "text-purple-700"}`}>
+                    FIR {revealedCaseCount}/{caseFileGroups.length}
+                  </span>
                   <button
-                    onClick={replayDocAnimation}
-                    title="Replay 6.3-Second Build-Out Sequence"
-                    className={`flex items-center gap-1.5 rounded px-2 py-1 font-semibold text-[11px] transition-colors ${
+                    onClick={skipAnimation}
+                    title="Skip build animation"
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase transition-colors ${
                       isDark
-                        ? "hover:bg-[#25252e] hover:text-amber-400 text-[#8c8c96]"
-                        : "hover:bg-[#f4efe4] hover:text-amber-700 text-[#7a7b83]"
+                        ? "bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+                        : "bg-purple-100 text-purple-800 hover:bg-purple-200"
                     }`}
                   >
-                    <Play className="size-3 text-amber-500 fill-amber-500" />
-                    <span>Replay 6.3s Build-Out</span>
+                    Skip
                   </button>
-                )
+                </div>
               ) : (
                 <button
-                  onClick={() => fitView()}
-                  title="Fit Syndicate Network"
+                  onClick={() => replayAnimation()}
+                  title="Replay case-by-case build animation"
                   className={`flex items-center gap-1.5 rounded px-2 py-1 font-semibold text-[11px] transition-colors ${
                     isDark
-                      ? "hover:bg-[#25252e] hover:text-purple-400 text-[#8c8c96]"
-                      : "hover:bg-[#f4efe4] hover:text-purple-700 text-[#7a7b83]"
+                      ? "hover:bg-raised hover:text-purple-400 text-ink-muted"
+                      : "hover:bg-raised hover:text-purple-700 text-ink-muted"
                   }`}
                 >
-                  <Network className="size-3 text-purple-500" />
-                  <span>Fit Syndicate</span>
+                  <Play className="size-3 text-purple-500 fill-purple-500" />
+                  <span>Replay Build</span>
                 </button>
               )}
             </div>
@@ -2273,7 +1916,7 @@ export default function ObsidianGraphView({
                 className={`absolute right-5 top-5 z-20 flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold shadow-xl backdrop-blur-md transition-all cursor-pointer ${
                   isDark
                     ? "border-zinc-800 bg-zinc-900/95 text-white hover:bg-zinc-800 hover:border-purple-500/50"
-                    : "border-[#e8e4da] bg-white/95 text-[#1c1d22] hover:bg-[#faf8f2]"
+                    : "border-line bg-white/95 text-ink hover:bg-panel"
                 }`}
               >
                 <Info className="size-4 text-purple-500" />
@@ -2286,19 +1929,19 @@ export default function ObsidianGraphView({
               <div
                 className={`absolute right-4 top-4 bottom-4 w-[390px] xl:w-[420px] z-30 overflow-y-auto rounded-2xl border p-5 text-xs shadow-2xl backdrop-blur-xl font-sans transition-colors ${
                   isDark
-                    ? "border-zinc-800/80 bg-[#14141c]/98 text-zinc-300"
-                    : "border-[#e8e4da] bg-white/98 text-[#1c1d22]"
+                    ? "border-zinc-800/80 bg-panel-deep/98 text-zinc-300"
+                    : "border-line bg-white/98 text-ink"
                 }`}
               >
                 {/* Mode Switcher Tabs + Header Icons */}
                 <div
                   className={`flex items-center justify-between border-b pb-3 mb-4 transition-colors ${
-                    isDark ? "border-zinc-800/80" : "border-[#ede9df]"
+                    isDark ? "border-zinc-800/80" : "border-line"
                   }`}
                 >
                   <div
                     className={`flex items-center gap-1 p-1 rounded-xl border transition-colors ${
-                      isDark ? "bg-zinc-950/80 border-zinc-800/80" : "bg-[#f4efe4] border-[#e8e4da]"
+                      isDark ? "bg-zinc-950/80 border-zinc-800/80" : "bg-raised border-line"
                     }`}
                   >
                     <button
@@ -2307,10 +1950,10 @@ export default function ObsidianGraphView({
                         rightHudMode === "details"
                           ? isDark
                             ? "bg-zinc-800 text-white shadow-xs border border-zinc-700/60"
-                            : "bg-white text-[#1c1d22] shadow-xs border border-[#ded8cb]"
+                            : "bg-white text-ink shadow-xs border border-line-strong"
                           : isDark
                           ? "text-zinc-400 hover:text-white"
-                          : "text-[#7a7b83] hover:text-[#1c1d22]"
+                          : "text-ink-muted hover:text-ink"
                       }`}
                     >
                       <Info className="size-3.5 text-purple-500" />
@@ -2322,10 +1965,10 @@ export default function ObsidianGraphView({
                         rightHudMode === "settings"
                           ? isDark
                             ? "bg-zinc-800 text-white shadow-xs border border-zinc-700/60"
-                            : "bg-white text-[#1c1d22] shadow-xs border border-[#ded8cb]"
+                            : "bg-white text-ink shadow-xs border border-line-strong"
                           : isDark
                           ? "text-zinc-400 hover:text-white"
-                          : "text-[#7a7b83] hover:text-[#1c1d22]"
+                          : "text-ink-muted hover:text-ink"
                       }`}
                     >
                       <Sliders className="size-3.5 text-sky-500" />
@@ -2333,7 +1976,7 @@ export default function ObsidianGraphView({
                     </button>
                   </div>
 
-                  <div className={`flex items-center gap-1.5 ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                  <div className={`flex items-center gap-1.5 ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                     {rightHudMode === "settings" && (
                       <button
                         onClick={resetToDefaults}
@@ -2356,115 +1999,10 @@ export default function ObsidianGraphView({
                 {/* ── MODE 1: NODE / CASE DOSSIER DETAILS ── */}
                 {rightHudMode === "details" && (
                   <div className="space-y-4">
-                    {selectedDocId && DOC_MARKDOWN_CONTENT[selectedDocId] && graphMode === "doc-build" ? (() => {
-                      const docMeta = DOC_NODES.find((d) => d.id === selectedDocId);
-                      const docData = DOC_MARKDOWN_CONTENT[selectedDocId];
-                      return (
-                        <div className="space-y-4">
-                          {/* Title & Badge Header */}
-                          <div className={`border-b pb-3 ${isDark ? "border-[#23232a]" : "border-[#ede9df]"}`}>
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-black bg-amber-400 shadow-sm">
-                                {docMeta?.category || "DOC"} NOTE
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <span className="font-mono text-[11px] text-[#71717a]">
-                                  {docMeta?.filename}
-                                </span>
-                                <button
-                                  onClick={() => copyNodeId(docMeta?.filename || "")}
-                                  title="Copy filename"
-                                  className="p-1 text-[#71717a] hover:text-white"
-                                >
-                                  {copiedId ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
-                                </button>
-                              </div>
-                            </div>
-
-                            <h3 className={`text-base font-bold leading-snug ${isDark ? "text-white" : "text-[#1c1d22]"}`}>
-                              {docData.title}
-                            </h3>
-                            <p className={`mt-1 text-xs font-medium ${isDark ? "text-[#a1a1aa]" : "text-[#65666e]"}`}>
-                              {docData.subtitle}
-                            </p>
-
-                            {/* Tags */}
-                            <div className="mt-3 flex flex-wrap gap-1.5">
-                              {docData.tags.map((t) => (
-                                <span
-                                  key={t}
-                                  className={`rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold ${
-                                    isDark
-                                      ? "border-zinc-800 bg-zinc-900 text-amber-400/90"
-                                      : "border-[#e8e4da] bg-amber-50 text-amber-800"
-                                  }`}
-                                >
-                                  #{t}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Formatted Markdown Content Card */}
-                          <div
-                            className={`rounded-xl border p-4 font-mono text-xs leading-relaxed max-h-[380px] overflow-y-auto whitespace-pre-wrap ${
-                              isDark
-                                ? "border-zinc-800/80 bg-zinc-950/70 text-zinc-300"
-                                : "border-[#e8e4da] bg-white text-zinc-800 shadow-inner"
-                            }`}
-                          >
-                            {docData.content}
-                          </div>
-
-                          {/* Graph Relationships / WikiLinks */}
-                          <div className={`border-t pt-3 ${isDark ? "border-[#23232a]" : "border-[#ede9df]"}`}>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
-                              Note Graph Connections
-                            </span>
-                            <div className="mt-2 space-y-2">
-                              {docMeta?.parentId && (
-                                <div
-                                  className={`flex items-center justify-between p-2 rounded-lg border ${
-                                    isDark ? "bg-[#181820] border-[#26262e]" : "bg-[#f9f8f4] border-[#eeeae0]"
-                                  }`}
-                                >
-                                  <span className="text-xs text-zinc-400">Parent Note:</span>
-                                  <button
-                                    onClick={() => focusDocNode(docMeta.parentId!)}
-                                    className="font-mono text-xs font-bold text-amber-500 hover:underline cursor-pointer"
-                                  >
-                                    [[{docMeta.parentId}]]
-                                  </button>
-                                </div>
-                              )}
-                              {DOC_NODES.filter((d) => d.parentId === selectedDocId).length > 0 && (
-                                <div
-                                  className={`p-2 rounded-lg border space-y-1.5 ${
-                                    isDark ? "bg-[#181820] border-[#26262e]" : "bg-[#f9f8f4] border-[#eeeae0]"
-                                  }`}
-                                >
-                                  <span className="text-xs text-zinc-400">Child Notes:</span>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {DOC_NODES.filter((d) => d.parentId === selectedDocId).map((ch) => (
-                                      <button
-                                        key={ch.id}
-                                        onClick={() => focusDocNode(ch.id)}
-                                        className="font-mono text-[11px] px-2 py-0.5 rounded bg-zinc-800/80 text-sky-400 hover:bg-zinc-700 cursor-pointer"
-                                      >
-                                        [[{ch.id}]]
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })() : selectedNode ? (
+                    {selectedNode ? (
                       <div>
                         {/* Title & Badge Header */}
-                        <div className="border-b border-[#23232a] pb-3">
+                        <div className="border-b border-line pb-3">
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <span
                               className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-white shadow-sm"
@@ -2477,22 +2015,22 @@ export default function ObsidianGraphView({
                                 : selectedNode.category}
                             </span>
                             <div className="flex items-center gap-1">
-                              <span className="font-mono text-[11px] text-[#71717a]">
+                              <span className="font-mono text-[11px] text-ink-muted">
                                 {selectedNode.id}
                               </span>
                               <button
                                 onClick={() => copyNodeId(selectedNode.id)}
                                 title="Copy ID"
-                                className="p-1 text-[#71717a] hover:text-white"
+                                className="p-1 text-ink-muted hover:text-white"
                               >
-                                {copiedId ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                                {copiedId ? <Check className="size-3 text-verified" /> : <Copy className="size-3" />}
                               </button>
                             </div>
                           </div>
 
                           <h3
                             className={`text-base font-bold leading-snug ${
-                              isDark ? "text-white" : "text-[#1c1d22]"
+                              isDark ? "text-white" : "text-ink"
                             }`}
                           >
                             {selectedNode.label}
@@ -2501,7 +2039,7 @@ export default function ObsidianGraphView({
                           {selectedNode.sublabel && (
                             <p
                               className={`mt-1 text-xs font-medium ${
-                                isDark ? "text-[#a1a1aa]" : "text-[#65666e]"
+                                isDark ? "text-ink-muted" : "text-ink-muted"
                               }`}
                             >
                               {selectedNode.sublabel}
@@ -2521,7 +2059,7 @@ export default function ObsidianGraphView({
                               <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                                 <span
                                   className={`text-[10px] font-bold uppercase tracking-wider ${
-                                    isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                                    isDark ? "text-ink-muted" : "text-ink-muted"
                                   }`}
                                 >
                                   Cases:
@@ -2538,8 +2076,8 @@ export default function ObsidianGraphView({
                                       }}
                                       className={`rounded border px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors ${
                                         isDark
-                                          ? "bg-[#202028] border-[#2a2a34] text-[#c084fc] hover:bg-[#282834] hover:text-white"
-                                          : "bg-[#f4efe4] border-[#e8e4da] text-[#7d2db8] hover:bg-[#ede8dc] hover:text-[#1c1d22]"
+                                          ? "bg-panel border-line text-alert hover:bg-raised hover:text-white"
+                                          : "bg-raised border-line text-alert hover:bg-raised hover:text-ink"
                                       }`}
                                     >
                                       {cid.replace("CASE_", "FIR_")}
@@ -2604,12 +2142,12 @@ export default function ObsidianGraphView({
                               <div
                                 key={`${label}-${idx}`}
                                 className={`flex flex-col gap-1 border-b pb-2 ${
-                                  isDark ? "border-[#23232a]" : "border-[#ede9df]"
+                                  isDark ? "border-line" : "border-line"
                                 }`}
                               >
                                 <span
                                   className={`text-[10px] uppercase font-bold tracking-wider ${
-                                    isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"
+                                    isDark ? "text-ink-muted" : "text-ink-muted"
                                   }`}
                                 >
                                   {label}
@@ -2617,8 +2155,8 @@ export default function ObsidianGraphView({
                                 <span
                                   className={`text-xs font-semibold p-2 rounded-lg border break-words ${
                                     isDark
-                                      ? "text-white bg-[#181820] border-[#26262e]"
-                                      : "text-[#1c1d22] bg-[#f9f8f4] border-[#eeeae0]"
+                                      ? "text-white bg-panel-deep border-line"
+                                      : "text-ink bg-panel-deep border-line"
                                   }`}
                                 >
                                   {val}
@@ -2632,16 +2170,16 @@ export default function ObsidianGraphView({
                         <div
                           className={`mt-3 flex items-center gap-2 text-xs font-bold p-2.5 rounded-lg border ${
                             isDark
-                              ? "bg-emerald-950/40 border-emerald-800/50 text-emerald-300"
-                              : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                              ? "bg-verified/15 border-verified/40 text-verified"
+                              : "bg-verified/10 border-verified/40 text-verified"
                           }`}
                         >
-                          <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                          <CheckCircle2 className="size-4 text-verified shrink-0" />
                           <div className="flex flex-col min-w-0">
                             <span>BSA 63(4) Blockchain Anchored</span>
                             <span
                               className={`font-mono text-[10px] truncate ${
-                                isDark ? "text-emerald-400/80" : "text-emerald-700"
+                                isDark ? "text-verified/80" : "text-verified"
                               }`}
                             >
                               SHA256: 0x{selectedNode.id.slice(0, 8)}...anchored
@@ -2652,13 +2190,13 @@ export default function ObsidianGraphView({
                         {/* Direct Connections / Neighbors */}
                         <div
                           className={`mt-4 border-t pt-3 ${
-                            isDark ? "border-[#23232a]" : "border-[#ede9df]"
+                            isDark ? "border-line" : "border-line"
                           }`}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span
                               className={`text-xs font-bold uppercase tracking-wider ${
-                                isDark ? "text-white" : "text-[#1c1d22]"
+                                isDark ? "text-white" : "text-ink"
                               }`}
                             >
                               Direct Connections
@@ -2675,8 +2213,8 @@ export default function ObsidianGraphView({
                                 onClick={() => focusNode(nb.id)}
                                 className={`flex items-center justify-between rounded-lg border p-2 cursor-pointer transition-all ${
                                   isDark
-                                    ? "border-[#26262e] bg-[#181820] hover:border-[#a855f7] hover:bg-[#20202a]"
-                                    : "border-[#e8e4da] bg-[#f9f8f4] hover:border-[#a855f7] hover:bg-[#faf8f2]"
+                                    ? "border-line bg-panel-deep hover:border-[#a855f7] hover:bg-panel"
+                                    : "border-line bg-panel-deep hover:border-[#a855f7] hover:bg-panel"
                                 }`}
                               >
                                 <div className="flex items-center gap-2 min-w-0">
@@ -2687,7 +2225,7 @@ export default function ObsidianGraphView({
                                   <div className="flex flex-col min-w-0">
                                     <span
                                       className={`truncate text-xs font-semibold ${
-                                        isDark ? "text-white" : "text-[#1c1d22]"
+                                        isDark ? "text-white" : "text-ink"
                                       }`}
                                     >
                                       {nb.label}
@@ -2695,7 +2233,7 @@ export default function ObsidianGraphView({
                                     {nb.sublabel && (
                                       <span
                                         className={`truncate text-[10px] ${
-                                          isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                                          isDark ? "text-ink-muted" : "text-ink-muted"
                                         }`}
                                       >
                                         {nb.sublabel}
@@ -2705,7 +2243,7 @@ export default function ObsidianGraphView({
                                 </div>
                                 <ChevronRight
                                   className={`size-3.5 shrink-0 ${
-                                    isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                                    isDark ? "text-ink-muted" : "text-ink-muted"
                                   }`}
                                 />
                               </div>
@@ -2714,7 +2252,7 @@ export default function ObsidianGraphView({
                             {selectedNeighbors.length === 0 && (
                               <div
                                 className={`py-4 text-center text-xs ${
-                                  isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                                  isDark ? "text-ink-muted" : "text-ink-muted"
                                 }`}
                               >
                                 No direct connections recorded.
@@ -2759,7 +2297,7 @@ export default function ObsidianGraphView({
                               className={`flex items-center justify-center gap-2 rounded-lg border py-2 text-xs font-bold transition-colors cursor-pointer ${
                                 isDark
                                   ? "border-[#10b981]/40 bg-[#10b981]/10 text-[#34d399] hover:bg-[#10b981]/20"
-                                  : "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  : "border-verified/40 bg-verified/10 text-verified hover:bg-verified/20"
                               }`}
                             >
                               <MessageSquare className="size-3.5" />
@@ -2772,22 +2310,22 @@ export default function ObsidianGraphView({
                               onClick={() => copyNodeId(selectedNode.id)}
                               className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                                 isDark
-                                  ? "border-[#2a2a33] bg-[#18181d] text-[#d4d4d8] hover:border-[#3f3f4a] hover:text-white"
-                                  : "border-[#e8e4da] bg-white text-[#4a4b52] hover:bg-[#faf8f2] hover:text-[#1c1d22]"
+                                  ? "border-line bg-panel-deep text-ink hover:border-line-strong hover:text-white"
+                                  : "border-line bg-white text-ink-muted hover:bg-panel hover:text-ink"
                               }`}
                             >
-                              {copiedId ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                              {copiedId ? <Check className="size-3.5 text-verified" /> : <Copy className="size-3.5" />}
                               <span>{copiedId ? "Copied" : "Copy ID"}</span>
                             </button>
                             <button
                               onClick={() => copyNodeJson(selectedNode)}
                               className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg border py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                                 isDark
-                                  ? "border-[#2a2a33] bg-[#18181d] text-[#d4d4d8] hover:border-[#3f3f4a] hover:text-white"
-                                  : "border-[#e8e4da] bg-white text-[#4a4b52] hover:bg-[#faf8f2] hover:text-[#1c1d22]"
+                                  ? "border-line bg-panel-deep text-ink hover:border-line-strong hover:text-white"
+                                  : "border-line bg-white text-ink-muted hover:bg-panel hover:text-ink"
                               }`}
                             >
-                              {copiedJson ? <Check className="size-3.5 text-emerald-500" /> : <FileCode className="size-3.5" />}
+                              {copiedJson ? <Check className="size-3.5 text-verified" /> : <FileCode className="size-3.5" />}
                               <span>{copiedJson ? "Copied JSON" : "Copy JSON"}</span>
                             </button>
                           </div>
@@ -2796,21 +2334,21 @@ export default function ObsidianGraphView({
                     ) : (
                       <div
                         className={`py-8 text-center space-y-3 ${
-                          isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"
+                          isDark ? "text-ink-muted" : "text-ink-muted"
                         }`}
                       >
                         <Info className="size-8 mx-auto opacity-60" />
                         <div>
                           <p
                             className={`font-bold text-[13px] ${
-                              isDark ? "text-white" : "text-[#1c1d22]"
+                              isDark ? "text-white" : "text-ink"
                             }`}
                           >
                             Select Node to Inspect
                           </p>
                           <p
                             className={`text-xs mt-1 ${
-                              isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                              isDark ? "text-ink-muted" : "text-ink-muted"
                             }`}
                           >
                             Click any node on the graph or document in the left explorer.
@@ -2820,7 +2358,7 @@ export default function ObsidianGraphView({
                         <div className="pt-2 text-left space-y-1.5">
                           <span
                             className={`text-[10px] font-bold uppercase tracking-wider ${
-                              isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                              isDark ? "text-ink-muted" : "text-ink-muted"
                             }`}
                           >
                             Quick Access:
@@ -2831,8 +2369,8 @@ export default function ObsidianGraphView({
                               onClick={() => focusNode(quickNode.id)}
                               className={`flex w-full items-center justify-between rounded-lg border p-2 text-left transition-colors cursor-pointer ${
                                 isDark
-                                  ? "border-[#26262e] bg-[#181820] hover:border-[#a855f7] hover:bg-[#202028]"
-                                  : "border-[#e8e4da] bg-[#f9f8f4] hover:border-[#a855f7] hover:bg-[#faf8f2]"
+                                  ? "border-line bg-panel-deep hover:border-[#a855f7] hover:bg-panel"
+                                  : "border-line bg-panel-deep hover:border-[#a855f7] hover:bg-panel"
                               }`}
                             >
                               <div className="flex items-center gap-2 min-w-0">
@@ -2842,7 +2380,7 @@ export default function ObsidianGraphView({
                                 />
                                 <span
                                   className={`truncate text-xs font-semibold ${
-                                    isDark ? "text-white" : "text-[#1c1d22]"
+                                    isDark ? "text-white" : "text-ink"
                                   }`}
                                 >
                                   {quickNode.label}
@@ -2850,7 +2388,7 @@ export default function ObsidianGraphView({
                               </div>
                               <ChevronRight
                                 className={`size-3 shrink-0 ${
-                                  isDark ? "text-[#71717a]" : "text-[#8c8c96]"
+                                  isDark ? "text-ink-muted" : "text-ink-muted"
                                 }`}
                               />
                             </button>
@@ -2869,7 +2407,7 @@ export default function ObsidianGraphView({
                       <button
                         onClick={() => setFiltersOpen((o) => !o)}
                         className={`flex w-full items-center gap-2 font-bold text-[13px] mb-3 transition-colors ${
-                          isDark ? "text-[#e4e4e7]" : "text-[#1c1d22]"
+                          isDark ? "text-ink" : "text-ink"
                         }`}
                       >
                         <div className="size-4 border border-current rounded-sm flex items-center justify-center text-xs">
@@ -2883,7 +2421,7 @@ export default function ObsidianGraphView({
                           <div className="relative">
                             <Search
                               className={`absolute left-3 top-2.5 size-4 ${
-                                isDark ? "text-[#71717a]" : "text-[#9e9ea5]"
+                                isDark ? "text-ink-muted" : "text-ink-faint"
                               }`}
                             />
                             <input
@@ -2893,22 +2431,22 @@ export default function ObsidianGraphView({
                               placeholder="Search files..."
                               className={`h-8.5 w-full rounded-lg border pl-9 pr-3 text-xs outline-none font-medium transition ${
                                 isDark
-                                  ? "border-[#2a2a33] bg-[#18181d] text-white placeholder-[#71717a] focus:border-[#4b4b58]"
-                                  : "border-[#e4dfd3] bg-white text-[#1c1d22] placeholder-[#9e9ea5] focus:border-[#d29b28]"
+                                  ? "border-line bg-panel-deep text-white placeholder-ink-muted focus:border-line-strong"
+                                  : "border-line bg-white text-ink placeholder-ink-faint focus:border-accent"
                               }`}
                             />
                           </div>
 
                           <div
                             className={`flex items-center justify-between text-xs font-medium ${
-                              isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                              isDark ? "text-ink" : "text-ink-muted"
                             }`}
                           >
                             <span>Tags</span>
                             <button
                               onClick={() => setFilterTags((t) => !t)}
                               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
-                                filterTags ? "bg-[#e5851d]" : isDark ? "bg-[#2b2b33]" : "bg-[#ded8cb]"
+                                filterTags ? "bg-[#e5851d]" : isDark ? "bg-raised" : "bg-[#ded8cb]"
                               }`}
                             >
                               <span
@@ -2921,14 +2459,14 @@ export default function ObsidianGraphView({
 
                           <div
                             className={`flex items-center justify-between text-xs font-medium ${
-                              isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                              isDark ? "text-ink" : "text-ink-muted"
                             }`}
                           >
                             <span>Attachments</span>
                             <button
                               onClick={() => setFilterAttachments((t) => !t)}
                               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
-                                filterAttachments ? "bg-[#e5851d]" : isDark ? "bg-[#2b2b33]" : "bg-[#ded8cb]"
+                                filterAttachments ? "bg-[#e5851d]" : isDark ? "bg-raised" : "bg-[#ded8cb]"
                               }`}
                             >
                               <span
@@ -2941,14 +2479,14 @@ export default function ObsidianGraphView({
 
                           <div
                             className={`flex items-center justify-between text-xs font-medium ${
-                              isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                              isDark ? "text-ink" : "text-ink-muted"
                             }`}
                           >
                             <span>Existing files only</span>
                             <button
                               onClick={() => setFilterExistingFilesOnly((t) => !t)}
                               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
-                                filterExistingFilesOnly ? "bg-[#e5851d]" : isDark ? "bg-[#2b2b33]" : "bg-[#ded8cb]"
+                                filterExistingFilesOnly ? "bg-[#e5851d]" : isDark ? "bg-raised" : "bg-[#ded8cb]"
                               }`}
                             >
                               <span
@@ -2961,14 +2499,14 @@ export default function ObsidianGraphView({
 
                           <div
                             className={`flex items-center justify-between text-xs font-medium ${
-                              isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                              isDark ? "text-ink" : "text-ink-muted"
                             }`}
                           >
                             <span>Orphans</span>
                             <button
                               onClick={() => setFilterOrphans((t) => !t)}
                               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
-                                filterOrphans ? "bg-[#e5851d]" : isDark ? "bg-[#2b2b33]" : "bg-[#ded8cb]"
+                                filterOrphans ? "bg-[#e5851d]" : isDark ? "bg-raised" : "bg-[#ded8cb]"
                               }`}
                             >
                               <span
@@ -2987,7 +2525,7 @@ export default function ObsidianGraphView({
                       <button
                         onClick={() => setGroupsOpen((o) => !o)}
                         className={`flex w-full items-center gap-2 font-bold text-[13px] mb-3 transition-colors ${
-                          isDark ? "text-[#e4e4e7]" : "text-[#1c1d22]"
+                          isDark ? "text-ink" : "text-ink"
                         }`}
                       >
                         <div className="size-4 border border-current rounded-sm flex items-center justify-center text-xs">
@@ -3009,14 +2547,14 @@ export default function ObsidianGraphView({
                             <div
                               key={grp.label}
                               className={`flex items-center justify-between text-xs ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <div className="flex items-center gap-2">
                                 <span className="size-3 rounded-full" style={{ background: grp.color }} />
                                 <span className="font-semibold">{grp.label}</span>
                               </div>
-                              <span className={`text-[10px] font-mono ${isDark ? "text-[#71717a]" : "text-[#8c8c96]"}`}>
+                              <span className={`text-[10px] font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 tag:#{grp.label.split(" ")[0]}
                               </span>
                             </div>
@@ -3024,8 +2562,8 @@ export default function ObsidianGraphView({
                           <button
                             className={`w-full mt-2.5 rounded-lg border py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                               isDark
-                                ? "border-[#2a2a33] bg-[#18181d] text-[#d4d4d8] hover:border-[#3f3f4a] hover:text-white"
-                                : "border-[#e8e4da] bg-white text-[#4a4b52] hover:bg-[#faf8f2] hover:text-[#1c1d22]"
+                                ? "border-line bg-panel-deep text-ink hover:border-line-strong hover:text-white"
+                                : "border-line bg-white text-ink-muted hover:bg-panel hover:text-ink"
                             }`}
                           >
                             New group
@@ -3039,7 +2577,7 @@ export default function ObsidianGraphView({
                       <button
                         onClick={() => setDisplayOpen((o) => !o)}
                         className={`flex w-full items-center gap-2 font-bold text-[13px] mb-3 transition-colors ${
-                          isDark ? "text-[#e4e4e7]" : "text-[#1c1d22]"
+                          isDark ? "text-ink" : "text-ink"
                         }`}
                       >
                         <div className="size-4 border border-current rounded-sm flex items-center justify-center text-xs">
@@ -3052,14 +2590,14 @@ export default function ObsidianGraphView({
                         <div className="space-y-4 pl-1">
                           <div
                             className={`flex items-center justify-between text-xs font-medium ${
-                              isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                              isDark ? "text-ink" : "text-ink-muted"
                             }`}
                           >
                             <span>Arrows</span>
                             <button
                               onClick={() => setArrows((a) => !a)}
                               className={`relative h-5 w-9 rounded-full transition-colors cursor-pointer ${
-                                arrows ? "bg-[#e5851d]" : isDark ? "bg-[#2b2b33]" : "bg-[#ded8cb]"
+                                arrows ? "bg-[#e5851d]" : isDark ? "bg-raised" : "bg-[#ded8cb]"
                               }`}
                             >
                               <span
@@ -3073,7 +2611,7 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Label Density (LOD)</span>
@@ -3081,7 +2619,7 @@ export default function ObsidianGraphView({
                             </div>
                             <div
                               className={`grid grid-cols-3 gap-1 p-1 rounded-lg border transition-colors ${
-                                isDark ? "bg-[#18181d] border-[#2a2a33]" : "bg-[#f4efe4] border-[#e8e4da]"
+                                isDark ? "bg-panel-deep border-line" : "bg-raised border-line"
                               }`}
                             >
                               {(["smart", "hubs", "all"] as const).map((m) => (
@@ -3092,8 +2630,8 @@ export default function ObsidianGraphView({
                                     labelMode === m
                                       ? "bg-[#a855f7] text-white shadow-xs"
                                       : isDark
-                                      ? "text-[#8c8c96] hover:text-white"
-                                      : "text-[#7a7b83] hover:text-[#1c1d22]"
+                                      ? "text-ink-muted hover:text-white"
+                                      : "text-ink-muted hover:text-ink"
                                   }`}
                                 >
                                   {m}
@@ -3105,11 +2643,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Text fade threshold</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {textFadeThreshold.toFixed(2)}
                               </span>
                             </div>
@@ -3121,7 +2659,7 @@ export default function ObsidianGraphView({
                               value={textFadeThreshold}
                               onChange={(e) => setTextFadeThreshold(parseFloat(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3129,11 +2667,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Node size</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {nodeSize.toFixed(2)}
                               </span>
                             </div>
@@ -3145,7 +2683,7 @@ export default function ObsidianGraphView({
                               value={nodeSize}
                               onChange={(e) => setNodeSize(parseFloat(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3153,11 +2691,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Link thickness</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {linkThickness.toFixed(2)}
                               </span>
                             </div>
@@ -3169,7 +2707,7 @@ export default function ObsidianGraphView({
                               value={linkThickness}
                               onChange={(e) => setLinkThickness(parseFloat(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3179,8 +2717,8 @@ export default function ObsidianGraphView({
                               onClick={triggerAnimate}
                               className={`rounded-lg border px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                                 isDark
-                                  ? "border-[#2a2a33] bg-[#18181d] text-[#d4d4d8] hover:border-[#3f3f4a] hover:text-white"
-                                  : "border-[#e8e4da] bg-white text-[#4a4b52] hover:bg-[#faf8f2] hover:text-[#1c1d22]"
+                                  ? "border-line bg-panel-deep text-ink hover:border-line-strong hover:text-white"
+                                  : "border-line bg-white text-ink-muted hover:bg-panel hover:text-ink"
                               }`}
                             >
                               Animate
@@ -3195,7 +2733,7 @@ export default function ObsidianGraphView({
                       <button
                         onClick={() => setForcesOpen((o) => !o)}
                         className={`flex w-full items-center gap-2 font-bold text-[13px] mb-3 transition-colors ${
-                          isDark ? "text-[#e4e4e7]" : "text-[#1c1d22]"
+                          isDark ? "text-ink" : "text-ink"
                         }`}
                       >
                         <div className="size-4 border border-current rounded-sm flex items-center justify-center text-xs">
@@ -3209,11 +2747,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Center force</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {centerForce.toFixed(2)}
                               </span>
                             </div>
@@ -3225,7 +2763,7 @@ export default function ObsidianGraphView({
                               value={centerForce}
                               onChange={(e) => setCenterForce(parseFloat(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3233,11 +2771,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Repel force</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {repelForce.toFixed(2)}
                               </span>
                             </div>
@@ -3249,7 +2787,7 @@ export default function ObsidianGraphView({
                               value={repelForce}
                               onChange={(e) => setRepelForce(parseFloat(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3257,11 +2795,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Link force</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {linkForce.toFixed(2)}
                               </span>
                             </div>
@@ -3273,7 +2811,7 @@ export default function ObsidianGraphView({
                               value={linkForce}
                               onChange={(e) => setLinkForce(parseFloat(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3281,11 +2819,11 @@ export default function ObsidianGraphView({
                           <div>
                             <div
                               className={`flex items-center justify-between text-xs font-medium mb-1.5 ${
-                                isDark ? "text-[#d4d4d8]" : "text-[#3a3b44]"
+                                isDark ? "text-ink" : "text-ink-muted"
                               }`}
                             >
                               <span>Link distance</span>
-                              <span className={`font-mono ${isDark ? "text-[#8c8c96]" : "text-[#7a7b83]"}`}>
+                              <span className={`font-mono ${isDark ? "text-ink-muted" : "text-ink-muted"}`}>
                                 {Math.round(linkDistance)}
                               </span>
                             </div>
@@ -3297,7 +2835,7 @@ export default function ObsidianGraphView({
                               value={linkDistance}
                               onChange={(e) => setLinkDistance(parseInt(e.target.value))}
                               className={`h-1.5 w-full rounded-lg cursor-pointer ${
-                                isDark ? "bg-[#2b2b33] accent-white" : "bg-[#ded8cb] accent-[#202126]"
+                                isDark ? "bg-raised accent-white" : "bg-[#ded8cb] accent-[#202126]"
                               }`}
                             />
                           </div>
@@ -3316,8 +2854,8 @@ export default function ObsidianGraphView({
                 title="Open Node Details / Settings"
                 className={`absolute right-4 top-4 flex size-9 items-center justify-center rounded-xl border shadow-xl transition-colors cursor-pointer ${
                   isDark
-                    ? "border-[#26262e] bg-[#141418] text-[#8c8c96] hover:text-white"
-                    : "border-[#e8e4da] bg-white text-[#7a7b83] hover:text-[#1c1d22]"
+                    ? "border-line bg-panel-deep text-ink-muted hover:text-white"
+                    : "border-line bg-white text-ink-muted hover:text-ink"
                 }`}
               >
                 <Info className="size-4" />

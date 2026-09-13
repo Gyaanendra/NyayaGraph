@@ -1,6 +1,13 @@
+import os
+from dotenv import load_dotenv
+
+# Load .env variables immediately on server initialization
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints import router as cases_router, blockchain_router, flowchart_router, chat_router
+from app.api.uidb import router as uidb_router
 
 app = FastAPI(
     title="NyayaGraph-GN API",
@@ -20,6 +27,7 @@ app.include_router(cases_router)
 app.include_router(blockchain_router)
 app.include_router(flowchart_router)
 app.include_router(chat_router)
+app.include_router(uidb_router)
 
 @app.get("/")
 def read_root():

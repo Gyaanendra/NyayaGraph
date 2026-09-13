@@ -36,7 +36,7 @@ export const DOC_NODES: DocNode[] = [
     filename: "02-recommended-models.md",
     parentId: "index",
     category: "GUIDE",
-    description: "Neural & LLM Models Benchmark: GLM-5.3, LayoutLMv3, GAT",
+    description: "Neural & LLM Models Benchmark: DeepSeek-Flash, LayoutLMv3, GAT",
   },
   {
     id: "03-conda-environment-setup",
@@ -253,14 +253,14 @@ The "Evidence Soup" aggregates heterogeneous forensic materials across all activ
   },
   "02-recommended-models": {
     title: "02. Recommended Neural & LLM Forensic Models",
-    subtitle: "Model Evaluation • GLM-5.3, LayoutLMv3 & Graph Attention",
-    tags: ["MODELS", "GLM-5.3", "LAYOUTLM", "NER"],
+    subtitle: "Model Evaluation • DeepSeek-Flash, LayoutLMv3 & Graph Attention",
+    tags: ["MODELS", "DEEPSEEK-FLASH", "LAYOUTLM", "NER"],
     content: `# 02-recommended-models.md
 
 ## Forensic Intelligence Model Suite
 For high-precision extraction without hallucinations, the following models are recommended:
 
-- **GLM-5.3-Flash / Pro**: Primary reasoning engine for autonomous detective copilot, FIR cross-examination, and complex multi-hop causal inference.
+- **DeepSeek-Flash / Reasoner**: Primary high-reasoning engine with enabled thinking mode for autonomous detective copilot, FIR cross-examination, and complex multi-hop causal inference.
 - **LayoutLMv3**: Multi-modal document parsing for scanned ledgers and stamps.
 - **Graph Attention Networks (GAT)**: Centrality scoring and syndicate broker detection.
 `,
