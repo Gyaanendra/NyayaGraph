@@ -33,6 +33,12 @@ import {
   UserX,
   Sliders,
   Eye,
+  X,
+  MapPin,
+  Hash,
+  AlertTriangle,
+  User,
+  Camera,
 } from "lucide-react";
 import {
   fetchAllCases,
@@ -84,10 +90,14 @@ export default function OfficialDashboardView({
   const [missingLimit, setMissingLimit] = useState(8);
   const [missingFilterStation, setMissingFilterStation] = useState("ALL");
 
+  // ── Dossier Inspect Modal State ──
+  const [inspectModalRecord, setInspectModalRecord] = useState<UidbRecord | null>(null);
+
   // Ref to the dossier inspector panel so "Inspect" can scroll it into view
   const dossierPanelRef = useRef<HTMLDivElement>(null);
   const handleInspectUidb = (rec: UidbRecord) => {
     setSelectedUidb(rec);
+    setInspectModalRecord(rec);
     dossierPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
@@ -1620,9 +1630,9 @@ export default function OfficialDashboardView({
                       {/* Action Buttons */}
                       <div className="mt-auto flex items-center gap-1.5 pt-1">
                         <button
-                          onClick={() => handleInspectUidb(rec)}
+                          onClick={() => setInspectModalRecord(rec)}
                           className="flex-1 flex items-center justify-center gap-1 rounded-lg bg-alert/10 border border-alert/30 px-2 py-1.5 text-[10.5px] font-semibold text-alert hover:bg-alert hover:text-white transition-all cursor-pointer"
-                          title="Inspect full dossier in 3D gallery panel"
+                          title="Open full dossier details"
                         >
                           <Eye className="size-3" />
                           <span>Inspect</span>
@@ -1868,6 +1878,152 @@ export default function OfficialDashboardView({
           firNumber={previewPdfCase.firNumber}
           policeStation={previewPdfCase.policeStation}
         />
+      )}
+
+      {/* ── DOSSIER INSPECT MODAL ── */}
+      {inspectModalRecord && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.82)", backdropFilter: "blur(12px)" }}
+          onClick={() => setInspectModalRecord(null)}
+        >
+          <div
+            className="relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl border border-line bg-panel-deep"
+            style={{ maxHeight: "92vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close */}
+            <button
+              onClick={() => setInspectModalRecord(null)}
+              className="absolute top-4 right-4 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-alert transition-colors cursor-pointer"
+            >
+              <X className="size-4" />
+            </button>
+
+            {/* Hero Photo */}
+            <div className="relative h-72 w-full overflow-hidden bg-black">
+              {inspectModalRecord.has_local_photo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={inspectModalRecord.image_url}
+                  alt={inspectModalRecord.name_en}
+                  className="w-full h-full object-cover"
+                  style={{ filter: "brightness(0.85)" }}
+                />
+              ) : (
+                <div className="flex w-full h-full flex-col items-center justify-center gap-3 bg-gradient-to-b from-zinc-800 to-zinc-950">
+                  <Camera className="size-16 text-zinc-600" />
+                  <span className="text-sm font-mono text-zinc-500">No Photo on Record</span>
+                </div>
+              )}
+              {/* Gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-panel-deep via-black/30 to-transparent" />
+
+              {/* Status badge overlay */}
+              <span className="absolute top-4 left-4 rounded-lg px-3 py-1 text-xs font-bold font-mono bg-alert/90 text-white shadow-lg">
+                {inspectModalRecord.status_en === "Unidentified / Unknown"
+                  ? "⚠ UNIDENTIFIED"
+                  : inspectModalRecord.status_en}
+              </span>
+
+              {/* Name & Reg over photo bottom */}
+              <div className="absolute bottom-0 left-0 right-0 px-6 pb-5">
+                <h2 className="text-2xl font-extrabold text-white tracking-tight drop-shadow">
+                  {inspectModalRecord.name_en}
+                </h2>
+                {inspectModalRecord.name_hi && (
+                  <p className="text-sm text-zinc-300 font-medium mt-0.5">{inspectModalRecord.name_hi}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Details Body */}
+            <div className="p-6 space-y-5">
+
+              {/* Primary Info Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { icon: Hash, label: "Registration No.", value: inspectModalRecord.reg_number, accent: true },
+                  { icon: User, label: "Approximate Age", value: inspectModalRecord.age && inspectModalRecord.age > 0 ? `~${inspectModalRecord.age} years` : "Unknown", accent: false },
+                  { icon: MapPin, label: "Police Station", value: inspectModalRecord.police_station_en, accent: false },
+                  { icon: MapPin, label: "District", value: inspectModalRecord.district_en || "Madhya Pradesh", accent: false },
+                  { icon: Globe, label: "State", value: inspectModalRecord.state_en, accent: false },
+                  { icon: AlertTriangle, label: "Status", value: inspectModalRecord.status_en, accent: true },
+                ].map((field) => {
+                  const Icon = field.icon;
+                  return (
+                    <div
+                      key={field.label}
+                      className="flex items-start gap-3 rounded-2xl border p-3.5 border-line bg-canvas"
+                    >
+                      <div className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-xl ${
+                        field.accent ? "bg-alert/15 text-alert" : "bg-accent/10 text-accent"
+                      }`}>
+                        <Icon className="size-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="block text-[10px] font-mono uppercase tracking-wider text-ink-muted">{field.label}</span>
+                        <span className={`block text-sm font-bold mt-0.5 truncate ${
+                          field.accent ? "text-alert" : "text-ink"
+                        }`}>{field.value || "—"}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Image ID */}
+              <div className="rounded-2xl border border-line bg-canvas px-4 py-3 flex items-center gap-3">
+                <Fingerprint className="size-4 text-accent shrink-0" />
+                <div>
+                  <span className="block text-[10px] font-mono uppercase tracking-wider text-ink-muted">SCRB Image ID</span>
+                  <span className="block text-xs font-mono font-semibold text-ink mt-0.5">{inspectModalRecord.image_id}</span>
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  onClick={() => {
+                    onOpenChat(
+                      undefined,
+                      `Analyze missing person dossier: ${inspectModalRecord.name_en}, Reg: ${inspectModalRecord.reg_number}, from ${inspectModalRecord.police_station_en} PS, ${inspectModalRecord.district_en}, Madhya Pradesh. Provide full forensic analysis, potential leads and cross-case connections.`
+                    );
+                    setInspectModalRecord(null);
+                  }}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-2.5 text-sm font-bold text-white hover:bg-accent/90 transition-colors cursor-pointer shadow-lg"
+                >
+                  <Bot className="size-4" />
+                  Ask AI Detective
+                </button>
+                <a
+                  href={inspectModalRecord.portal_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold border-line bg-panel text-ink-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="size-4" />
+                  MP Portal
+                </a>
+                <button
+                  onClick={() => {
+                    handleInspectUidb(inspectModalRecord);
+                    setInspectModalRecord(null);
+                  }}
+                  className="flex items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold border-alert/30 bg-alert/10 text-alert hover:bg-alert hover:text-white transition-colors cursor-pointer"
+                >
+                  <Eye className="size-4" />
+                  3D Gallery
+                </button>
+              </div>
+
+              {/* Footer note */}
+              <p className="text-center text-[10px] font-mono text-ink-faint pt-1">
+                Source: MP Police SCRB / UIDB Portal • NyayaGraph CBI Intelligence Core
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

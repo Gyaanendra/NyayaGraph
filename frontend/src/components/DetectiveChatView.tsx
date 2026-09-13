@@ -78,35 +78,180 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 const FORENSIC_PRESETS = [
+  // ── BANK FRAUD & FINANCIAL CRIMES ──
   {
     icon: Building2,
     title: "Consortium Bank Fraud",
     desc: "Credit line diversion & defaulted bank consortiums in Bangalore BS&FB",
-    query: "Analyze bank consortium credit line fraud cases in Bangalore (BS&FB).",
+    query: "Analyze bank consortium credit line fraud cases in Bangalore (BS&FB). List the banks defrauded, total amount diverted, named accused, and the shell account network used for fund routing.",
+    category: "Financial",
   },
+  {
+    icon: Building2,
+    title: "NCS Sugars Credit Fraud",
+    desc: "Working capital default & godown stock manipulation — RC0782026E0004",
+    query: "Provide a complete forensic breakdown of the NCS Sugars fraud case RC0782026E0004. How was the consortium credit line misused, what was the godown stock manipulation scheme, and who are the prime accused?",
+    category: "Financial",
+  },
+  {
+    icon: Building2,
+    title: "R L Jewels Bullion Diversion",
+    desc: "Multi-hop bullion routing & paper trail across RC0782026E0001",
+    query: "Trace the bullion diversion scheme in R L Jewels Pvt Ltd (RC0782026E0001). Identify all bank accounts involved, the paper trail hops, and the beneficial owners behind the fund movement.",
+    category: "Financial",
+  },
+  {
+    icon: Building2,
+    title: "Ashapura Garments Mule Accounts",
+    desc: "Canara Bank 14 mule accounts — freezing & fund trail analysis",
+    query: "Analyze the Ashapura Garments money mule network (RC0782026E0003). List all 14 Canara Bank mule accounts, their transaction volumes, and the persons controlling them.",
+    category: "Financial",
+  },
+  // ── ACCUSED PROFILING ──
   {
     icon: User,
     title: "Prime Accused Dossier",
-    desc: "Cross-case profiling of key conspirators, brokers & named accused",
-    query: "Profile prime accused Anowar Hussain and list connected offences and criminal links.",
+    desc: "Cross-case profiling of Anowar Hussain — broker & conspiracy links",
+    query: "Profile prime accused Anowar Hussain across all CBI cases. List every FIR he appears in, his role (broker/accused/abettor), linked entities, bank accounts, phone numbers, and any co-conspirators.",
+    category: "Accused",
+  },
+  {
+    icon: User,
+    title: "Public Servant Corruption Network",
+    desc: "PC Act accused — bribery trails & asset disproportionality",
+    query: "Identify all public servants named as accused across CBI cases who are charged under Prevention of Corruption Act Sections 7 and 13. List their designations, bribe amounts, and disproportionate asset trails.",
+    category: "Accused",
+  },
+  {
+    icon: User,
+    title: "Corporate Promoter Conspiracy",
+    desc: "Directors & promoters as co-conspirators in bank fraud syndicates",
+    query: "List all corporate promoters and directors who appear as co-accused in CBI bank fraud cases. Show their linked companies, shared accused connections, and total financial exposure.",
+    category: "Accused",
+  },
+  // ── LEGAL & STATUTORY ──
+  {
+    icon: Scale,
+    title: "IPC 420 & 120-B Network",
+    desc: "Cheating & criminal conspiracy — cross-case pattern analysis",
+    query: "Which CBI FIRs invoke both IPC Section 420 (cheating) and Section 120-B (criminal conspiracy)? Identify the common accused across these cases and map the conspiracy network.",
+    category: "Legal",
   },
   {
     icon: Scale,
-    title: "PC Act & Corruption",
-    desc: "FIRs invoking Sections 7 & 13(2) of Prevention of Corruption Act",
-    query: "Which FIRs invoke Section 7 & 13(2) of Prevention of Corruption Act?",
-  },
-  {
-    icon: Layers,
-    title: "Cross-Case Crime Syndicates",
-    desc: "Multi-jurisdictional shell networks & shared entity bridges",
-    query: "Identify entities bridging multiple CBI cases across different branches.",
+    title: "PC Act & Corruption Audit",
+    desc: "Sections 7 & 13(2) PC Act invocations across all branches",
+    query: "Audit all FIRs invoking PC Act Sections 7 and 13(2). Which government departments are implicated, what are the bribe amounts, and are there common accused between cases?",
+    category: "Legal",
   },
   {
     icon: ShieldCheck,
     title: "BSA 2023 Evidence Audit",
-    desc: "Section 63(4) cryptographic hash trail & evidence authenticity",
-    query: "Audit the BSA 2023 Section 63(4) cryptographic evidence hash trail and verification ledger.",
+    desc: "Section 63(4) cryptographic hash trail & electronic evidence",
+    query: "Audit the BSA 2023 Section 63(4) cryptographic evidence hash trail across all cases. Which cases have verified digital evidence chains, any hash mismatches, and what electronic records are flagged for court?",
+    category: "Legal",
+  },
+  {
+    icon: Scale,
+    title: "BNSS Procedural Compliance",
+    desc: "Section 94 search warrants & Section 173 custodial compliance",
+    query: "Review BNSS Section 94 search and seizure warrants issued across all active cases. Are all warrants properly backed by court orders? Flag any procedural violations or expired warrants.",
+    category: "Legal",
+  },
+  // ── MISSING PERSONS & UIDB ──
+  {
+    icon: Search,
+    title: "Unidentified Person Analysis",
+    desc: "SCRB UIDB — biometric correlation & cross-district matching",
+    query: "From the SCRB UIDB database, analyze all unidentified persons with approximate age between 25-45 years from Madhya Pradesh. Are there any cross-district patterns suggesting trafficking or organized crime links?",
+    category: "Missing",
+  },
+  {
+    icon: Search,
+    title: "Missing Persons Hotspot",
+    desc: "Police station-wise missing/unidentified clustering in MP",
+    query: "Which police stations in Madhya Pradesh have the highest number of unidentified body cases in the UIDB registry? Identify geographic clusters that may indicate organized criminal activity or trafficking routes.",
+    category: "Missing",
+  },
+  // ── CYBER CRIME ──
+  {
+    icon: Zap,
+    title: "Digital Arrest Extortion Ring",
+    desc: "VoIP SIP trunk intercept & escrow gateway — cyber extortion network",
+    query: "Analyze the Digital Arrest extortion case (FIR 112/2026 Noida). Trace the VoIP SIP trunk infrastructure, escrow payment gateways, and identify the masterminds behind the fake CBI/ED impersonation calls.",
+    category: "Cyber",
+  },
+  {
+    icon: Zap,
+    title: "IMEI & Phone Network Trace",
+    desc: "Burner phone clusters & IMEI swaps linked to accused",
+    query: "Trace all phone numbers and IMEI devices linked to named accused across CBI cases. Identify IMEI swaps, SIM clusters, tower dump overlaps, and communication patterns between co-accused.",
+    category: "Cyber",
+  },
+  {
+    icon: Zap,
+    title: "UPI & Digital Payments Trail",
+    desc: "Hawala-linked UPI IDs, wallets & crypto on-ramps",
+    query: "Map all UPI IDs, mobile wallets, and cryptocurrency on-ramp transactions linked to CBI fraud cases. Identify the hawala nodes, layering accounts, and ultimate beneficiaries of diverted funds.",
+    category: "Cyber",
+  },
+  // ── SHELL COMPANIES & MONEY LAUNDERING ──
+  {
+    icon: Layers,
+    title: "Shell Company Network Map",
+    desc: "Cross-jurisdictional shell entities & beneficial ownership tracing",
+    query: "Identify all shell companies and paper entities appearing across CBI cases. Map beneficial ownership chains, registered office overlaps, shared directors, and trace how funds are laundered through these entities.",
+    category: "Financial",
+  },
+  {
+    icon: Layers,
+    title: "Cross-Case Crime Syndicates",
+    desc: "Multi-jurisdictional shared entity bridges across CBI branches",
+    query: "Identify entities (persons, companies, bank accounts, phones) that appear in more than two CBI cases across different branches. Build a syndicate graph showing shared nodes and the full criminal network.",
+    category: "Financial",
+  },
+  {
+    icon: Layers,
+    title: "Money Laundering Layering",
+    desc: "PMLA predicate offences & three-stage laundering detection",
+    query: "Detect three-stage money laundering patterns (placement, layering, integration) across all CBI bank fraud cases. Which cases show PMLA predicate offence linkages and what are the estimated laundered amounts?",
+    category: "Financial",
+  },
+  // ── INTELLIGENCE & OPERATIONS ──
+  {
+    icon: ShieldCheck,
+    title: "Look Out Circular Status",
+    desc: "Active LOCs, border alerts & absconding accused tracking",
+    query: "List all accused persons under active Look Out Circulars (LOC) across CBI cases. Which accused are absconding, have exit restrictions, or are under Interpol coordination? What is their last known location?",
+    category: "Intelligence",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Asset Attachment Status",
+    desc: "Bank debit freezes, property attachments & escrow orders",
+    query: "Summarize all asset attachment and bank account freeze orders across active CBI cases. What is the total value of attached assets, which orders are pending court confirmation, and what assets remain unattached?",
+    category: "Intelligence",
+  },
+  {
+    icon: Building2,
+    title: "Bank Branch Exposure Report",
+    desc: "Branch-wise NPA exposure & complicit bank official assessment",
+    query: "Generate a bank branch exposure report across all CBI consortium fraud cases. Which branches show highest NPA exposure, are any bank officials named as accused or co-conspirators, and what is the total defrauded amount per branch?",
+    category: "Intelligence",
+  },
+  {
+    icon: FileText,
+    title: "FIR Timeline & Case Progress",
+    desc: "Investigation milestones, chargesheet status & court proceedings",
+    query: "Provide a chronological timeline of all CBI cases — from FIR registration to charge sheet filing and current court stage. Which cases are pending charge sheet beyond 60 days, and what are the next critical investigation deadlines?",
+    category: "Intelligence",
+  },
+  {
+    icon: Search,
+    title: "Full Case Summary: RC0782026E0004",
+    desc: "Complete forensic brief — NCS Sugars consortium fraud dossier",
+    query: "Generate a complete executive forensic summary for CBI case RC0782026E0004 (NCS Sugars). Include: accused list with roles, defrauded banks and amounts, IPC/PC Act sections, evidence status, LOC/arrest status, asset attachment, and next investigation steps.",
+    category: "Intelligence",
   },
 ];
 
@@ -616,49 +761,81 @@ export default function DetectiveChatView({
           </div>
 
           {/* Investigation Presets */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-            <span
-              className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
-                isDark ? "text-ink-muted" : "text-ink-muted"
-              }`}
-            >
-              Forensic Inquiry Presets
-            </span>
-            <div className="space-y-2">
-              {FORENSIC_PRESETS.map((preset, idx) => {
-                const Icon = preset.icon;
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => handleSend(preset.query)}
-                    disabled={loading}
-                    className={`w-full text-left rounded-2xl border p-3 transition-all cursor-pointer disabled:opacity-50 ${
-                      isDark
-                        ? "border-line bg-panel hover:border-line-strong hover:bg-raised"
-                        : "border-line bg-panel hover:border-line-strong hover:bg-panel"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className="size-3.5 text-accent" />
-                      <span
-                        className={`text-xs font-bold ${
-                          isDark ? "text-white" : "text-ink"
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
+                  isDark ? "text-ink-muted" : "text-ink-muted"
+                }`}
+              >
+                Forensic Inquiry Presets
+              </span>
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${isDark ? "bg-accent/15 text-accent" : "bg-accent/10 text-accent"}`}>
+                {FORENSIC_PRESETS.length} queries
+              </span>
+            </div>
+
+            {(["Financial", "Accused", "Legal", "Missing", "Cyber", "Intelligence"] as const).map((cat) => {
+              const catPresets = FORENSIC_PRESETS.filter((p) => (p as any).category === cat);
+              if (catPresets.length === 0) return null;
+
+              const catColors: Record<string, string> = {
+                Financial: "bg-amber-500/15 text-amber-400",
+                Accused: "bg-red-500/15 text-red-400",
+                Legal: "bg-blue-500/15 text-blue-400",
+                Missing: "bg-orange-500/15 text-orange-400",
+                Cyber: "bg-purple-500/15 text-purple-400",
+                Intelligence: "bg-emerald-500/15 text-emerald-400",
+              };
+
+              return (
+                <div key={cat} className="space-y-1.5">
+                  {/* Category Header */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className={`text-[9.5px] font-bold font-mono uppercase tracking-widest px-2 py-0.5 rounded-md ${catColors[cat]}`}>
+                      {cat}
+                    </span>
+                    <div className={`flex-1 h-px ${isDark ? "bg-line" : "bg-line"}`} />
+                  </div>
+
+                  {catPresets.map((preset, idx) => {
+                    const Icon = preset.icon;
+                    return (
+                      <button
+                        key={`${cat}-${idx}`}
+                        onClick={() => handleSend(preset.query)}
+                        disabled={loading}
+                        className={`w-full text-left rounded-xl border p-2.5 transition-all cursor-pointer disabled:opacity-50 group ${
+                          isDark
+                            ? "border-line bg-panel hover:border-accent/40 hover:bg-raised"
+                            : "border-line bg-panel hover:border-accent/30 hover:bg-panel"
                         }`}
                       >
-                        {preset.title}
-                      </span>
-                    </div>
-                    <p
-                      className={`mt-1 text-[11px] line-clamp-2 leading-relaxed ${
-                        isDark ? "text-ink-muted" : "text-ink-muted"
-                      }`}
-                    >
-                      {preset.desc}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
+                        <div className="flex items-start gap-2">
+                          <Icon className={`size-3.5 shrink-0 mt-0.5 text-accent group-hover:scale-110 transition-transform`} />
+                          <div className="min-w-0">
+                            <span
+                              className={`block text-[11.5px] font-bold leading-tight ${
+                                isDark ? "text-white" : "text-ink"
+                              }`}
+                            >
+                              {preset.title}
+                            </span>
+                            <p
+                              className={`mt-0.5 text-[10px] line-clamp-2 leading-relaxed ${
+                                isDark ? "text-ink-muted" : "text-ink-muted"
+                              }`}
+                            >
+                              {preset.desc}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         </div>
 
